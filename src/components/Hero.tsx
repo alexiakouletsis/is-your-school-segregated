@@ -194,8 +194,8 @@ export default function Hero({ curtainDone, onCurtainDropping, setCurtainDone, o
           onCurtainReset={() => setCurtainDone(false)}
           onCurtainDropping={onCurtainDropping}
           mode={mode}
-          pinkDotRef={pinkDotRef}
-          greenDotRef={greenDotRef}
+          pinkDotRef={pinkDotRef as any}
+          greenDotRef={greenDotRef as any}
           mobilePressed={mobilePressed}
         />
 
