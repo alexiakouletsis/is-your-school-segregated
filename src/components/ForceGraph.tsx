@@ -140,7 +140,7 @@ export default function ForceGraph({ data, width, height, forceMult = 1, minEdge
       .attr('stroke-width', 1.5)
       .attr('cursor', 'pointer')
       .call(
-        d3.drag<SVGCircleElement, Node>()
+        d3.drag<any, Node>()
           .on('start', (event, d) => {
             if (!event.active) simulation.alphaTarget(0.3).restart()
             d.fx = d.x; d.fy = d.y
