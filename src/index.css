@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+:root {
+  --color-high-ses: #F17091;
+  --color-low-ses: #00B178;
+  --color-bg: #FAF9F6;
+  --color-race-1: #FF954D;
+  --color-race-2: #6897FF;
+}
+
+html {
+  overflow-x: clip;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--color-bg);
+  font-family: "omnes-condensed", sans-serif;
+}
+
+* {
+  cursor: url('/assets/cursor.svg') 0 0, auto;
+}
+
+.pcg-link:hover {
+  text-decoration: underline !important;
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes dotFloatBob {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(var(--dot-bob-amount, -8px)); }
+}
+
+@keyframes teeter {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+
+/* Mobile only — this combined with the sticky/transform panels elsewhere
+   in the app appears to trigger a WebKit bug on desktop Safari that breaks
+   scrolling entirely (confirmed: removing it fixed desktop Safari). Scoped
+   to mobile so iOS still gets the momentum-scroll/no-rubber-band behavior
+   this was originally added for, without re-breaking desktop Safari. */
+@media (max-width: 768px) {
+  html, body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+.info-box {
+  transition: transform 0.3s ease;
+}
+
+.info-box:hover {
+  transform: scale(1.02);
+}
+
+.course-tracking-link:hover {
+  text-decoration: underline !important;
+}
