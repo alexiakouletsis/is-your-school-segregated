@@ -18,9 +18,18 @@ const STEPS = [
   { label: 'All students in grade 5.' },
 ]
 
-export default function GraphSection45({ mode, initialNodes }: {
+export default function GraphSection45({ mode, initialNodes, grade3Version, resetSignal }: {
   mode: Mode
   initialNodes: React.MutableRefObject<Node[]>
+  // Bumped by ArticleSection the moment GraphSection's real grade-3-final
+  // positions actually arrive (see the comment there). Included in the main
+  // graph effect's deps below so step 0's layout — and its auto-zoom — get
+  // recomputed against the real continuation positions once available,
+  // instead of permanently keeping whatever it first rendered (possibly a
+  // random-scatter fallback, if initialNodes.current was still empty the
+  // first time this effect ran).
+  grade3Version?: number
+  resetSignal?: number
 }) {
   const [allGraphData, setAllGraphData] = useState<(GraphData | null)[]>([null, null])
   const [grade3Data, setGrade3Data] = useState<GraphData | null>(null)
@@ -42,6 +51,15 @@ export default function GraphSection45({ mode, initialNodes }: {
     // buffer for GraphSection or GraphSection68's own last-step exits.
     endBufferMs: 1400,
   })
+
+  // Only bumped by Conclusion's bottom-of-page toggle (a deliberate full
+  // restart), never by a plain mode change — see the comment on
+  // graphResetSignal in App.tsx.
+  const isFirstResetRender = useRef(true)
+  useEffect(() => {
+    if (isFirstResetRender.current) { isFirstResetRender.current = false; return }
+    setCurrentStep(0)
+  }, [resetSignal, setCurrentStep])
 
   useEffect(() => {
     Promise.all([
@@ -86,8 +104,16 @@ export default function GraphSection45({ mode, initialNodes }: {
   // hover highlighting
   useEffect(() => {
     if (!svgRef.current) return
+    // currentStep stays in the deps array below (so this still re-fires
+    // and re-corrects edge opacity whenever the step changes — the actual
+    // bug it was added for) but is deliberately NOT passed as an argument
+    // here. applyHoverHighlight's shared radius logic hardcodes
+    // `currentStep === 1 ? 10 : 6`, written for GraphSection.tsx's own
+    // step numbering — passing currentStep through for this component
+    // (where step 1 means grade 4, not whatever step 1 means there) was
+    // what forced grade 4's circles to an unrelated, oversized radius.
     applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current)
-  }, [hoveredNode])
+  }, [hoveredNode, currentStep])
 
   // main graph effect
   useEffect(() => {
@@ -145,6 +171,11 @@ export default function GraphSection45({ mode, initialNodes }: {
     simulationRef.current = simulation
 
     const padding = isMobile ? 30 : 80
+    // Reverted the zoom cap entirely — it was never the actual problem.
+    // The real cause of grade 4's oversized/inconsistent circles was
+    // applyHoverHighlight's shared radius branch (see the comment on that
+    // call above); once that's fixed, autoZoom needs no special-casing
+    // here at all, same as it never did before this whole detour.
     const zoomTimer = autoZoom(g, width, height, padding)
 
     simulation.on('tick', () => {
@@ -203,10 +234,10 @@ export default function GraphSection45({ mode, initialNodes }: {
       clearTimeout(zoomTimer)
       tooltipRef.current?.style('opacity', 0)
     }
-  }, [currentStep, allGraphData, grade3Data, graphSize, mode, isMobile])
+  }, [currentStep, allGraphData, grade3Data, graphSize, mode, isMobile, grade3Version])
 
   return (
-    <div style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative', marginTop: isMobile ? '7vh' : '15vh' }}>
+    <div id="graph-45" style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative', marginTop: isMobile ? '7vh' : '15vh' }}>
       <div ref={sectionRef} style={{ position: isMobile ? 'relative' : 'sticky', top: 0, width: '100%', height: isMobile ? '100svh' : '100vh', backgroundColor: 'var(--color-bg)', display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: 'hidden' }}>
 
         {/* left panel */}

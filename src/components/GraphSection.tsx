@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import * as d3 from 'd3'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGraphSection } from '../hooks/useGraphSection'
@@ -21,9 +21,10 @@ const STEPS = [
   { label: 'All students in grade 3.' },
 ]
 
-export default function GraphSection({ mode, onGrade3Complete }: {
+export default function GraphSection({ mode, onGrade3Complete, resetSignal }: {
   mode: Mode
   onGrade3Complete: (nodes: Node[]) => void
+  resetSignal?: number
 }) {
   const [allGraphData, setAllGraphData] = useState<(GraphData | null)[]>([null, null, null, null])
 
@@ -33,6 +34,16 @@ export default function GraphSection({ mode, onGrade3Complete }: {
     activeNodesRef, activeEdgesRef, tooltipRef,
     isMobile, setupNodeInteractions, autoZoom,
   } = useGraphSection({ steps: STEPS })
+
+  // Only bumped by Conclusion's bottom-of-page toggle (a deliberate full
+  // restart), never by a plain mode change ('R' key or the future navbar
+  // toggle) — see the comment on graphResetSignal in App.tsx for why those
+  // two cases need to behave differently.
+  const isFirstResetRender = useRef(true)
+  useEffect(() => {
+    if (isFirstResetRender.current) { isFirstResetRender.current = false; return }
+    setCurrentStep(0)
+  }, [resetSignal, setCurrentStep])
 
   useEffect(() => {
     Promise.all([0, 1, 2, 3].map(i => fetch(`/data/graphs/${i}.json`).then(r => r.json())))
@@ -191,7 +202,7 @@ export default function GraphSection({ mode, onGrade3Complete }: {
   )
 
   return (
-    <div style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative' }}>
+    <div id="graph-k3" style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative' }}>
       <div ref={sectionRef} style={{ position: isMobile ? 'relative' : 'sticky', top: 0, width: '100%', height: isMobile ? '100svh' : '100vh', backgroundColor: 'var(--color-bg)', display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: 'hidden' }}>
 
         {/* left panel */}

@@ -1,11 +1,22 @@
 import { useState, useEffect, useRef } from 'react'
 import Hero from './components/Hero'
 import ArticleSection from './components/ArticleSection'
+import NavBar from './components/NavBar'
 
 export type Mode = 'ses' | 'race'
 
 function App() {
   const [curtainDone, setCurtainDone] = useState(false)
+  // Forces a full unmount/remount of <Hero> (and everything inside it,
+  // including BlobCurtain) on restart — bumped inside
+  // handleToggleModeAndScrollTop below. BlobCurtain's mobile press-and-hold
+  // gesture depends on several pieces of internal state/refs (hasTriggered,
+  // curtainPhase, mobileBlobScale, mobileBlobRadius, hasLockedRef) all
+  // resetting in exact lockstep to work again; manually chasing each one
+  // individually proved fragile. A key change is the robust way to
+  // guarantee every one of them returns to its pristine initial value,
+  // without needing to enumerate and verify each piece of state by hand.
+  const [heroResetKey, setHeroResetKey] = useState(0)
   const [forceSection01Start, setForceSection01Start] = useState(0)
   const [curtainDropping, setCurtainDropping] = useState(false)
   const [mobilePressed, setMobilePressed] = useState(false)
@@ -17,6 +28,19 @@ function App() {
   const [section03Part2AnimDone, setSection03Part2AnimDone] = useState(false)
   const [section03Part2OverlaySettled, setSection03Part2OverlaySettled] = useState(false)
   const [mode, setMode] = useState<Mode>('ses')
+  // Bumped only by the Conclusion toggle's restart action — see the
+  // comment on handleToggleModeAndScrollTop below for why this is kept
+  // separate from `mode` itself.
+  const [graphResetSignal, setGraphResetSignal] = useState(0)
+  // Once true, stays true — the nav bar is a one-time milestone unlock
+  // ("you've reached the conclusion"), not tied to current scroll
+  // position, so it stays available even after scrolling back up.
+  // Set once the user actually clicks Conclusion's own bottom SES/Race
+  // toggle (the "start over" action) — NOT when Conclusion merely finishes
+  // animating in. The nav bar's first-ever auto-reveal is tied to this
+  // plus scrolling down from the resulting restarted landing page, not to
+  // Conclusion's animation completing on its own.
+  const [hasToggledFromConclusion, setHasToggledFromConclusion] = useState(false)
 
   const scrollLockPos = useRef<number | null>(null)
   const sectionLockPos = useRef<number | null>(null)
@@ -85,24 +109,74 @@ function App() {
     }
   }, [])
 
-  // show overlay immediately on mobile
+  // Show overlay whenever curtainDone becomes false — not just once on
+  // initial mount. Previously this only ran on mount, so hideOverlay()
+  // setting display:'none' the first time the intro completed was never
+  // undone; after Conclusion's toggle later reset curtainDone back to
+  // false (to show the real landing screen again), nothing re-showed this
+  // overlay, silently breaking the mobile press-and-hold gesture it
+  // captures — touches just fell through with no listener to catch them.
   useEffect(() => {
-    if (isMobileDevice()) {
+    if (isMobileDevice() && !curtainDone) {
       const el = getOverlay()
       if (el) el.style.display = 'block'
     }
-  }, [])
+  }, [curtainDone])
+
+  // Plain mode flip, no scroll/graph reset — shared by the 'R' key and the
+  // nav bar's toggle. Deliberately the ONLY thing either of those does;
+  // contrast with handleToggleModeAndScrollTop below, which is specific to
+  // Conclusion's own bottom-of-page restart button.
+  const toggleMode = () => setMode(prev => prev === 'ses' ? 'race' : 'ses')
 
   // R key toggles mode
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'r' || e.key === 'R') {
-        setMode(prev => prev === 'ses' ? 'race' : 'ses')
+        toggleMode()
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [])
+
+  // Conclusion's visible toggle switch: same mode flip as the 'R' key, plus
+  // a jump back to the top of the page so "the whole thing starts over" —
+  // the user re-scrolls through everything fresh in the new mode. Mode
+  // flips immediately (so the toggle's own knob-slide is visible right
+  // away), but the actual scroll jump is delayed slightly so the user sees
+  // that slide play out before getting teleported, rather than the page
+  // jumping away in the same instant the toggle is clicked.
+  //
+  // graphResetSignal is deliberately separate from `mode` itself — every
+  // graph section listens for THIS specific signal to snap its own
+  // currentStep back to 0, but plain mode changes (the 'R' key today, and
+  // the future navbar toggle) must NOT reset whatever step the user is
+  // currently on. Only this bottom-of-page restart action should do that,
+  // since scrolling back to the top makes "the graphs are still on
+  // whatever step you left them at" a confusing state to land back into.
+  const TOGGLE_SLIDE_MS = 350
+  const handleToggleModeAndScrollTop = () => {
+    setMode(prev => prev === 'ses' ? 'race' : 'ses')
+    setHasToggledFromConclusion(true)
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'auto' })
+      setGraphResetSignal(v => v + 1)
+      // Scrolling to top alone isn't actually "the very start" — curtainDone
+      // stays true from before, so Hero would render the already-typed
+      // intro screen at scrollY 0 instead of the original press&hold/
+      // scroll-prompt landing view. Setting it false here (still needed,
+      // since App.tsx itself — not just Hero — reads curtainDone directly
+      // in a few places) cascades through the existing !curtainDone effect
+      // below (typingDone/curtainDropping/scrollLockPos).
+      setCurtainDone(false)
+      // The actual fix for mobile press-and-hold breaking on restart:
+      // force Hero (and BlobCurtain inside it) to fully remount, rather
+      // than depending on BlobCurtain's own internal scrollYProgress<0.2
+      // check to correctly reset every one of its refs/state in time.
+      setHeroResetKey(k => k + 1)
+    }, TOGGLE_SLIDE_MS)
+  }
 
   useEffect(() => {
     if (!curtainDone) {
@@ -185,6 +259,7 @@ function App() {
   return (
     <main>
       <Hero
+        key={heroResetKey}
         curtainDone={curtainDone}
         setCurtainDone={setCurtainDone}
         mobilePressed={mobilePressed}
@@ -299,8 +374,17 @@ function App() {
           section03Part2OverlaySettledRef.current = false
           setSection03Part2OverlaySettled(false)
         }}
+        onToggleModeAndScrollTop={handleToggleModeAndScrollTop}
+        graphResetSignal={graphResetSignal}
         mode={mode}
       />
+      {/* NavBar handles its own "hide at the landing page" detection
+          internally via direct scroll position — not curtainDone, which
+          only flips via a scroll CHANGE event and can get stuck false on a
+          page reload that starts already-scrolled-down. The first-ever
+          auto-reveal is tied to hasToggledFromConclusion plus scrolling
+          down from the landing page afterward (handled inside NavBar). */}
+      <NavBar mode={mode} onToggleMode={toggleMode} hasToggledFromConclusion={hasToggledFromConclusion} />
     </main>
   )
 }

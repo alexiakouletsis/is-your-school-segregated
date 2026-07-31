@@ -99,6 +99,22 @@ const MIN_EDGE_WEIGHT: Record<number, number> = {
   3: 1,
 }
 
+// Grade 9 (step 0) already spaces out well on its own — fewer, stronger
+// ties (higher edge-weight threshold) naturally settle at a comfortable
+// distance under the same charge. Grades 10-12 keep far more (weaker) ties
+// overall, so they need more repulsion power to reach a similarly natural-
+// looking equilibrium. This — not an artificial minimum-distance rule
+// forced onto every node via collision radius — is what actually
+// determines organic spacing: a uniform collision radius bump read as
+// manufactured, man-made shapes rather than the graph finding its own
+// natural layout, so that approach was reverted in favor of this.
+const CHARGE_STRENGTH: Record<number, number> = {
+  0: -75,
+  1: -115,
+  2: -115,
+  3: -115,
+}
+
 function sampleNodes(nodes: Node[], cap: number, highId: number, lowId: number): Node[] {
   if (nodes.length <= cap) return nodes
   const protagonists = nodes.filter(n => n.id === highId || n.id === lowId)
@@ -156,7 +172,63 @@ function pruneLowDegree(
   }
 }
 
-export default function GraphSection912({ mode }: { mode: Mode }) {
+// A local degree threshold (pruneLowDegree above) can't catch this: a small
+// clique of students who only share one odd elective TOGETHER, and nothing
+// else, can each individually have degree >= 3 within that clique while the
+// clique as a whole is disconnected (or only very thinly bridged) from
+// everyone else. The force simulation naturally flings a disconnected or
+// weakly-connected little cluster like that away from the main mass — the
+// "random floaters" reported. A degree threshold has no way to see that,
+// since it only looks at each node's own edge count, never at what the rest
+// of its component looks like. Keeping only the single largest connected
+// component is a global check that catches it regardless of local degree.
+function keepLargestComponent(
+  nodes: Node[], edges: Edge[], highId: number, lowId: number
+): { nodes: Node[]; edges: Edge[] } {
+  const adjacency = new Map<number, number[]>()
+  nodes.forEach(n => adjacency.set(n.id, []))
+  edges.forEach(e => {
+    const s = e.source as number, t = e.target as number
+    adjacency.get(s)?.push(t)
+    adjacency.get(t)?.push(s)
+  })
+
+  const visited = new Set<number>()
+  let largest: Set<number> = new Set()
+
+  nodes.forEach(n => {
+    if (visited.has(n.id)) return
+    const component = new Set<number>([n.id])
+    const queue = [n.id]
+    visited.add(n.id)
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      for (const neighbor of adjacency.get(current) ?? []) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor)
+          component.add(neighbor)
+          queue.push(neighbor)
+        }
+      }
+    }
+    if (component.size > largest.size) largest = component
+  })
+
+  // Always keep both protagonists even in the (very unlikely, given both
+  // were vetted against the real data) case one somehow lands outside the
+  // giant component — silently dropping a protagonist would break "the two
+  // never share a class again," which depends on both being on screen.
+  const keepIds = new Set(largest)
+  keepIds.add(highId)
+  keepIds.add(lowId)
+
+  return {
+    nodes: nodes.filter(n => keepIds.has(n.id)),
+    edges: edges.filter(e => keepIds.has(e.source as number) && keepIds.has(e.target as number)),
+  }
+}
+
+export default function GraphSection912({ mode, resetSignal }: { mode: Mode; resetSignal?: number }) {
   // [9th, 10th, 11th, 12th] — converted from the real GML course-sharing
   // data via scripts/convert_gml_to_json.py, dropped into public/data/graphs/
   // alongside the existing per-grade files.
@@ -185,6 +257,15 @@ export default function GraphSection912({ mode }: { mode: Mode }) {
     blockScrollForward: () => Date.now() - stepEnteredAtRef.current < 900,
   })
 
+  // Only bumped by Conclusion's bottom-of-page toggle (a deliberate full
+  // restart), never by a plain mode change — see the comment on
+  // graphResetSignal in App.tsx.
+  const isFirstResetRender = useRef(true)
+  useEffect(() => {
+    if (isFirstResetRender.current) { isFirstResetRender.current = false; return }
+    setCurrentStep(0)
+  }, [resetSignal, setCurrentStep])
+
   useEffect(() => { stepEnteredAtRef.current = Date.now() }, [currentStep])
 
   // load data
@@ -201,8 +282,10 @@ export default function GraphSection912({ mode }: { mode: Mode }) {
   // hover highlighting
   useEffect(() => {
     if (!svgRef.current) return
+    // Same reasoning as GraphSection45's identical comment — step 1 here
+    // means grade 10, not whatever GraphSection.tsx's own step 1 means.
     applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current)
-  }, [hoveredNode])
+  }, [hoveredNode, currentStep])
 
   // notice text
   useEffect(() => {
@@ -278,6 +361,17 @@ export default function GraphSection912({ mode }: { mode: Mode }) {
     newNodes = pruned.nodes
     let newEdges: Edge[] = pruned.edges
 
+    // The degree prune above catches lone/single-edge stragglers, but not
+    // small disconnected (or barely-bridged) cliques where every member
+    // individually clears the degree threshold — that's the "3 edges,
+    // 2-3 classes, floats away from the blobs" pattern. Keeping only the
+    // largest connected component removes those regardless of their local
+    // degree. See the comment on keepLargestComponent above for why a
+    // degree-only check can't catch this on its own.
+    const largestComponent = keepLargestComponent(newNodes, newEdges, highId, lowId)
+    newNodes = largestComponent.nodes
+    newEdges = largestComponent.edges
+
     activeNodesRef.current = newNodes
     activeEdgesRef.current = newEdges
 
@@ -290,22 +384,58 @@ export default function GraphSection912({ mode }: { mode: Mode }) {
 
     if (simulationRef.current) simulationRef.current.stop()
 
-    // Same physics as GraphSection68's real-network (alt-school) steps —
-    // softened charge with a distanceMax cap so segregated clusters don't
-    // fly apart further than comfortable to view together.
+    // Was identical to GraphSection68's physics, but 9-12's data is
+    // inherently sparser than 6-8's at the same weight threshold (more
+    // elective/track diversity means far fewer 3+-class overlaps — see the
+    // MIN_EDGE_WEIGHT comment above). Shrinking distanceMax was an earlier
+    // attempt to compensate, but that fights directly against wanting this
+    // graph to spread out as much as 6-8 does — and it wasn't strong enough
+    // to reliably anchor the weakest nodes anyway, since shrinking the
+    // charge's reach doesn't add any actual PULL on them, it just softens
+    // drift overall. distanceMax started back at matching 68's 300, then
+    // pushed further (along with charge strength) for more spread than 68
+    // itself, per request. 0.4 for the link-strength floor over-corrected
+    // once distanceMax/charge went up further — in grades 10-12
+    // (MIN_EDGE_WEIGHT 1), the vast majority of edges ARE weight-1, so
+    // that floor was pulling nearly every edge at that same strength, not
+    // just the true stragglers, over-tightening the whole graph rather
+    // than just anchoring outliers (grade 9's higher MIN_EDGE_WEIGHT of 2
+    // masked this, which is why only 9 looked fine). The floaters instead
+    // get handled by:
+    // - A modest floor on link strength (just enough over the original
+    //   uncapped ~0.06-0.12 for typical weights to help, without forcing
+    //   nearly every edge to the same value).
+    // - A slightly stronger constant pull toward center (forceX/forceY)
+    //   picking up more of the anchoring work instead.
+    // - A larger collision radius, which is what actually guarantees a
+    //   minimum gap between any two nodes regardless of how hard the
+    //   other forces pull them together — the more direct fix for nodes
+    //   visually touching/overlapping.
+    // Grades 10-12 needing more spacing than grade 9 is handled via
+    // per-step charge strength (CHARGE_STRENGTH above) rather than
+    // per-step collision radius — see that comment for why.
+    // Node/edge data itself is untouched, so volume is unaffected.
     const simulation = d3.forceSimulation<Node>(newNodes)
       .force('link', d3.forceLink<Node, Edge>(newEdges).id(d => d.id)
         .distance(d => Math.max(15, 80 - ((d as unknown as Edge).weight * 5)))
-        .strength(d => Math.min(1, (d as unknown as Edge).weight * 0.06)))
-      .force('charge', d3.forceManyBody().strength(-50).distanceMax(300))
+        .strength(d => Math.max(0.22, Math.min(1, (d as unknown as Edge).weight * 0.06))))
+      .force('charge', d3.forceManyBody().strength(CHARGE_STRENGTH[currentStep] ?? -75).distanceMax(340))
       .force('center', d3.forceCenter(cx, cy))
-      .force('collision', d3.forceCollide().radius(8))
-      .alphaDecay(isMobile ? 0.05 : 0.0228)
+      .force('x', d3.forceX(cx).strength(0.028))
+      .force('y', d3.forceY(cy).strength(0.028))
+      .force('collision', d3.forceCollide().radius(13))
+      // Faster than GraphSection/GraphSection45/68's shared 0.0228 default —
+      // this only changes how many ticks it takes to cool down to the same
+      // equilibrium layout the forces above define, not the layout itself,
+      // so it settles noticeably quicker without changing the final shape
+      // or requiring any other visual/aesthetic tradeoff.
+      .alphaDecay(isMobile ? 0.07 : 0.04)
 
     simulationRef.current = simulation
 
     const padding = isMobile ? 30 : 80
-    const zoomTimer = autoZoom(g, width, height, padding, 800)
+    // Reverted the zoom cap — see the identical comment in GraphSection45.
+    const zoomTimer = autoZoom(g, width, height, padding)
 
     simulation.on('tick', () => {
       linkG.selectAll<SVGLineElement, Edge>('line')
@@ -322,7 +452,17 @@ export default function GraphSection912({ mode }: { mode: Mode }) {
           .attr('stroke', d => getEdgeColor912(d, mode))
           .attr('stroke-width', 1)
           .attr('stroke-opacity', 0)
-          .transition().duration(600).attr('stroke-opacity', 0.2),
+          // Matches applyHoverHighlight's own resting (no-hover) value of
+          // 0.4 directly, rather than fading in to a different value (0.2)
+          // and relying on the separate hover-highlight effect to correct
+          // it afterward. That correction effect only re-runs when
+          // hoveredNode or currentStep actually change — for the very
+          // first step's initial load (grade 9), the async data fetch
+          // finishing doesn't trigger either, so edges were staying stuck
+          // at the mismatched 0.2 until an actual hover forced a re-run.
+          // Matching the values here removes the mismatch regardless of
+          // effect timing.
+          .transition().duration(600).attr('stroke-opacity', 0.4),
         update => update
           .transition().duration(300).attr('stroke', d => getEdgeColor912(d, mode)),
         exit => exit.transition().duration(300).attr('stroke-opacity', 0).remove()
@@ -378,7 +518,7 @@ export default function GraphSection912({ mode }: { mode: Mode }) {
   }
 
   return (
-    <div style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative', flexShrink: 0, width: '100%', marginTop: isMobile ? '-3vh' : 0 }}>
+    <div id="graph-912" style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative', flexShrink: 0, width: '100%', marginTop: isMobile ? '2vh' : 0 }}>
       <div
         ref={sectionRef}
         style={{

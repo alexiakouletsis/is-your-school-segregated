@@ -66,9 +66,12 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled, mode }: P
       // applies on desktop), so there's no reason to wait until the section
       // has nearly scrolled past before starting the typing there — trigger
       // much earlier, as soon as the section is meaningfully in view.
-      // Desktop keeps the later threshold tuned for where the freeze should
-      // actually engage.
-      const threshold = isMobile ? 0.3 : 0.90
+      // Desktop's threshold was lowered slightly from 0.90 — at 0.90 the
+      // freeze engaged just late enough that GraphSection912's top edge was
+      // already peeking into the locked viewport underneath this section's
+      // extra bottom padding; settling a touch earlier keeps the frozen
+      // frame higher up the page, clear of it.
+      const threshold = isMobile ? 0.3 : 0.85
       if (v >= threshold && !hasSettledRef.current) {
         hasSettledRef.current = true
         setSettled(true)
@@ -223,7 +226,7 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled, mode }: P
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: isMobile ? '5.5rem 1.5rem 4.5rem 1.5rem' : '6rem 2rem 5rem 2rem',
+        padding: isMobile ? '5.5rem 1.5rem 6.5rem 1.5rem' : '6rem 2rem 9rem 2rem',
         gap: isMobile ? '1.3rem' : '2.7rem',
         cursor: settled && !para2Done ? 'default' : 'auto',
       }}

@@ -134,7 +134,7 @@ function sampleAltNodes(nodes: Node[], cap: number): Node[] {
   return sampled
 }
 
-export default function GraphSection68({ mode }: { mode: Mode }) {
+export default function GraphSection68({ mode, resetSignal }: { mode: Mode; resetSignal?: number }) {
   // [generic 6th grade, alt-school 6th, alt-school 7th, alt-school 8th]
   // alt-6/7/8.json generated from the comparison school's real course-
   // sharing data (converted from the .gml files, protagonist ids remapped
@@ -185,6 +185,15 @@ export default function GraphSection68({ mode }: { mode: Mode }) {
       (currentStep === 0 && !dialogueDoneRef.current) ||
       (currentStep >= 2 && Date.now() - altStepEnteredAtRef.current < 900),
   })
+
+  // Only bumped by Conclusion's bottom-of-page toggle (a deliberate full
+  // restart), never by a plain mode change — see the comment on
+  // graphResetSignal in App.tsx.
+  const isFirstResetRender = useRef(true)
+  useEffect(() => {
+    if (isFirstResetRender.current) { isFirstResetRender.current = false; return }
+    setCurrentStep(0)
+  }, [resetSignal, setCurrentStep])
 
   useEffect(() => {
     if (currentStep >= 2) altStepEnteredAtRef.current = Date.now()
@@ -658,7 +667,7 @@ export default function GraphSection68({ mode }: { mode: Mode }) {
   })
 
   return (
-    <div style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative', flexShrink: 0, width: '100%', marginTop: isMobile ? '-3vh' : 0 }}>
+    <div id="graph-68" style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative', flexShrink: 0, width: '100%', marginTop: isMobile ? '-3vh' : 0 }}>
       <div
         ref={sectionRef}
         style={{

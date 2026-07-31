@@ -11,6 +11,7 @@ import Section03Intro from './Section03Intro'
 import CourseClusterSection from './CourseClusterSection'
 import Section03Part2 from './Section03Part2'
 import GraphSection912 from './GraphSection912'
+import Conclusion from './Conclusion'
 
 const INFO_TEXT = "Graphs are calculated based on how students share classes with one another. The closer the nodes are, the more classes they share. The further they repel from each other, the less classes they share. An edge between two nodes shows that those nodes/students share at least one class."
 
@@ -60,6 +61,8 @@ interface Props {
   onSection03Part2AnimDone?: () => void
   onSection03Part2OverlaySettled?: (scrollY: number) => void
   onSection03Part2AnimReset?: () => void
+  onToggleModeAndScrollTop?: () => void
+  graphResetSignal?: number
   mode: Mode
   forceStart?: number
 }
@@ -74,6 +77,8 @@ export default function ArticleSection({
   onSection03Part2AnimDone = () => {},
   onSection03Part2OverlaySettled = () => {},
   onSection03Part2AnimReset = () => {},
+  onToggleModeAndScrollTop = () => {},
+  graphResetSignal = 0,
   mode,
   forceStart,
 }: Props) {
@@ -88,6 +93,16 @@ export default function ArticleSection({
   const hasSettledRef = useRef(false)
   const hasResetRef = useRef(false)
   const finalGrade3NodesRef = useRef<Node[]>([])
+  // Bumped every time GraphSection's onGrade3Complete fires. finalGrade3NodesRef
+  // itself is a plain ref (mutating it doesn't trigger a re-render or rerun
+  // any effect that reads it), and GraphSection45 is already mounted (and
+  // its own step-0 effect may already have run once, using whatever
+  // finalGrade3NodesRef.current was at that moment) well before the user
+  // has necessarily scrolled through GraphSection to reach that callback.
+  // Without this, GraphSection45's step-0 layout could permanently bake in
+  // a stale/empty read and never get a chance to pick up the real
+  // continuation positions once they actually arrive.
+  const [grade3Version, setGrade3Version] = useState(0)
 
   const PARA_FULL = mode === 'race' ? RACE_PARA_FULL : SES_PARA_FULL
   const SEGMENTS = mode === 'race' ? RACE_SEGMENTS : SES_SEGMENTS
@@ -327,7 +342,11 @@ export default function ArticleSection({
 
         <GraphSection
           mode={mode}
-          onGrade3Complete={(nodes) => { finalGrade3NodesRef.current = nodes }}
+          resetSignal={graphResetSignal}
+          onGrade3Complete={(nodes) => {
+            finalGrade3NodesRef.current = nodes
+            setGrade3Version(v => v + 1)
+          }}
         />
 
         <div style={{ width: '100%', position: 'relative', zIndex: 2, backgroundColor: 'var(--color-bg)' }}>
@@ -342,10 +361,12 @@ export default function ArticleSection({
         <GraphSection45
           mode={mode}
           initialNodes={finalGrade3NodesRef}
+          grade3Version={grade3Version}
+          resetSignal={graphResetSignal}
         />
 
         <Section02 mode={mode} />
-        <GraphSection68 mode={mode} />
+        <GraphSection68 mode={mode} resetSignal={graphResetSignal} />
         <Section03Intro mode={mode} />
         <CourseClusterSection mode={mode} />
         <Section03Part2
@@ -354,7 +375,11 @@ export default function ArticleSection({
           onAnimReset={onSection03Part2AnimReset}
           mode={mode}
         />
-        <GraphSection912 mode={mode} />
+        <GraphSection912 mode={mode} resetSignal={graphResetSignal} />
+        <Conclusion
+          mode={mode}
+          onToggleModeAndScrollTop={onToggleModeAndScrollTop}
+        />
 
       </motion.div>
     </div>

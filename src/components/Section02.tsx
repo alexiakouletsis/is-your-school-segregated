@@ -40,14 +40,49 @@ function generateDots(mode: Mode, count: number): Dot[] {
 export default function Section02({ mode }: { mode: Mode }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
+  // Measured via window.innerWidth rather than trusted to the CSS `100vw`
+  // unit used below. On some mobile browsers 100vw doesn't reliably equal
+  // the true visible width (a known category of vw/vh browser quirk this
+  // codebase has already run into elsewhere, e.g. BlobCurtain's mobile
+  // measurement comment) — since this component's dots are positioned as
+  // percentages of THIS panel's own box, if the panel itself renders even
+  // slightly wider/narrower or offset from the true screen edges because
+  // of that quirk, the dots (accurately placed within the panel) still end
+  // up missing from one true screen edge and spilling past the other.
+  // Measuring window.innerWidth directly and using it in place of every
+  // 100vw below sidesteps that unit's quirk entirely.
+  const [viewportWidth, setViewportWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const measure = () => setViewportWidth(window.innerWidth)
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
+  const vwPx = viewportWidth !== null ? `${viewportWidth}px` : '100vw'
+  const fullBleedMarginLeft = viewportWidth !== null
+    ? `calc(-1 * ((${viewportWidth}px - 100%) / 2))`
+    : 'calc(-1 * ((100vw - 100%) / 2))'
   const [dots, setDots] = useState<Dot[]>(() => generateDots(mode, 500))
   const [dotColors, setDotColors] = useState<string[]>(() => dots.map(d => d.color))
   const [textOpacity, setTextOpacity] = useState(0)
   const progressRef = useRef(0)
   const dotRefs = useRef<(HTMLDivElement | null)[]>([])
+  // Tracks each dot's last-written opacity so the scroll handler below can
+  // skip the DOM write entirely once a dot has settled at a stable value
+  // (fully 0 before its reveal / after its fade, or fully 1 mid-hold) —
+  // most of the 200+ dots sit at one of those two stable states for most
+  // of the scroll range at any given moment, so this is what actually lets
+  // the dot count go back up without a proportional per-frame cost.
+  const lastOpacityRef = useRef<number[]>([])
 
   useEffect(() => {
-    setDots(generateDots(mode, isMobile ? 300 : 700))
+    // Mobile count restored now that the dirty-check above (and bob being
+    // desktop-only) keep the actual per-frame work low regardless of total
+    // count — the earlier plain cut to 110 fixed the symptom but lost too
+    // much of the flood's visual density.
+    const count = isMobile ? 240 : 700
+    setDots(generateDots(mode, count))
+    lastOpacityRef.current = new Array(count).fill(-1)
   }, [isMobile])
 
   // typing state
@@ -68,14 +103,21 @@ export default function Section02({ mode }: { mode: Mode }) {
   }, [mode, dots])
 
   // scroll tracking
+  const rafRef = useRef<number | null>(null)
   useEffect(() => {
-    const handleScroll = () => {
+    // The actual per-frame work, pulled into its own function so the
+    // listener below can coalesce many 'scroll' events (which can fire
+    // dozens of times within a single animation frame, especially during a
+    // fast mobile touch-scroll) into at most one recompute per frame,
+    // instead of redoing this full dot loop on every single event. This
+    // matters a lot more on mobile, where the same JS work costs more.
+    const update = () => {
       if (!containerRef.current) return
       const rect = containerRef.current.getBoundingClientRect()
       const containerHeight = containerRef.current.offsetHeight
 
       // Bail out entirely once this section is nowhere near the viewport.
-      // Without this, this handler (and its up-to-300/700-element dot loop
+      // Without this, this handler (and its up-to-110/700-element dot loop
       // below) kept running on every single scroll event for the rest of
       // the page's life, since this component is never unmounted after you
       // scroll past it — a real, unnecessary, continuous main-thread cost
@@ -94,8 +136,15 @@ export default function Section02({ mode }: { mode: Mode }) {
         const el = dotRefs.current[i]
         if (!el) return
         const opacity = getDotOpacity(dot, p)
-        el.style.opacity = String(opacity)
-        el.style.animationPlayState = opacity > 0.01 ? 'running' : 'paused'
+        // Skip the DOM write entirely if this dot's opacity hasn't
+        // meaningfully moved since last frame — see the comment on
+        // lastOpacityRef above for why this is what actually makes a
+        // higher dot count affordable.
+        if (Math.abs(opacity - (lastOpacityRef.current[i] ?? -1)) > 0.004) {
+          el.style.opacity = String(opacity)
+          lastOpacityRef.current[i] = opacity
+          if (!isMobile) el.style.animationPlayState = opacity > 0.01 ? 'running' : 'paused'
+        }
       })
 
       // when dots are done fading, start typing + lock scroll
@@ -104,10 +153,22 @@ export default function Section02({ mode }: { mode: Mode }) {
         lockScrollY.current = window.scrollY
       }
     }
+
+    const handleScroll = () => {
+      if (rafRef.current !== null) return
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null
+        update()
+      })
+    }
+
     window.addEventListener('scroll', handleScroll, { passive: true })
-    handleScroll()
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [dots])
+    update()
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    }
+  }, [dots, isMobile])
 
   // scroll lock while typing (desktop only — mobile keeps scrolling freely,
   // with the typing animation just playing out in the background)
@@ -183,8 +244,8 @@ export default function Section02({ mode }: { mode: Mode }) {
         height: '300vh',
         position: 'relative',
         flexShrink: 0,
-        width: '100vw',
-        marginLeft: 'calc(-1 * ((100vw - 100%) / 2))',
+        width: vwPx,
+        marginLeft: fullBleedMarginLeft,
         // Desktop: pulled up to overlap GraphSection45's tail so the dot
         // flood rises over it directly instead of after a scroll gap over
         // blank background. Scaled back from a full viewport (-100vh) to a
@@ -209,7 +270,7 @@ export default function Section02({ mode }: { mode: Mode }) {
         position: 'sticky',
         top: 0,
         width: '100%',
-        marginLeft: 'calc(-1 * ((100vw - 100%) / 2))',
+        marginLeft: fullBleedMarginLeft,
         height: '100vh',
         minHeight: '100vh',
         overflow: 'hidden',
@@ -259,10 +320,10 @@ export default function Section02({ mode }: { mode: Mode }) {
 
           <p style={{
             fontFamily: "'Kiwi Maru', serif",
-            fontSize: isMobile ? 'clamp(0.9rem, 3.5vw, 1.1rem)' : 'clamp(1rem, 1.8vw, 1.3rem)',
+            fontSize: isMobile ? 'clamp(0.9rem, 3.5vw, 1.1rem)' : 'clamp(1.05rem, 1.9vw, 1.35rem)',
             color: '#111',
             lineHeight: 1.9,
-            maxWidth: '860px',
+            maxWidth: '940px',
             textAlign: 'center',
             margin: 0,
             height: isMobile ? '22em' : '11em',
@@ -281,7 +342,7 @@ export default function Section02({ mode }: { mode: Mode }) {
             gap: isMobile ? '0.5rem' : '0rem',
             width: '100%',
             maxWidth: '900px',
-            marginTop: isMobile ? '-1rem' : '2rem',
+            marginTop: isMobile ? '-1rem' : '3.5rem',
           }}>
             <motion.div
               initial={{ opacity: 0 }}
@@ -345,8 +406,16 @@ export default function Section02({ mode }: { mode: Mode }) {
               opacity: 0,
               zIndex: 2,
               pointerEvents: 'none',
-              animation: `dotFloatBob ${dot.bobDuration}s ease-in-out infinite`,
-              animationDelay: `${dot.bobDelay}s`,
+              // Bob animation is desktop-only — each infinite keyframe
+              // animation likely gets promoted to its own compositor layer,
+              // and up to 300 of those running simultaneously is a very
+              // plausible source of mobile jank/heat. The dots still fade
+              // in/out and drive the scroll-linked reveal on mobile; they
+              // just stay still instead of continuously bobbing there.
+              ...(isMobile ? {} : {
+                animation: `dotFloatBob ${dot.bobDuration}s ease-in-out infinite`,
+                animationDelay: `${dot.bobDelay}s`,
+              }),
               animationPlayState: 'paused',
               ['--dot-bob-amount' as string]: `${-dot.bobAmount}px`,
             }}
