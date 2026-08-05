@@ -5,8 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Is Your School Segregated?</title>
 
+    <!-- Matches index.css's --color-bg. Without this, Safari infers the
+         browser-chrome color from the page itself and can flash a
+         mismatched (often darker/default) color during scroll-triggered
+         layout shifts near the top/bottom edges — this is the fix for the
+         nav-bar-navigation chrome-darkening bug. -->
+    <meta name="theme-color" content="#FAF9F6">
+
     <!-- Favicons -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- apple-touch-icon needs a real PNG (traditionally 180x180) — Safari's
+         home-screen/bookmark icon system has poor/inconsistent SVG support,
+         which is why the favicon shows as a grey globe on mobile even
+         though desktop SVG favicons work fine. Swap this back in once
+         apple-touch-icon.png exists in /public: -->
+    <!-- <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" /> -->
     <link rel="apple-touch-icon" href="/favicon.svg" />
 
     <!-- Omnes via Adobe Fonts -->

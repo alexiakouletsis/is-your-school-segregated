@@ -58,6 +58,13 @@ const getNodeColor912 = (d: Node, mode: Mode, highId: number, lowId: number): st
   return d.ses === 'higher' ? '#F17091' : '#00B178'
 }
 
+// Same grouping getNodeColor912 uses for the non-protagonist coloring
+// branch, reused to bias a brand-new node's STARTING position toward its
+// eventual side rather than dropping it at a random spot near center. See
+// the comment on the cold-start branch below for why this matters.
+const isHighGroup912 = (d: Node, mode: Mode): boolean =>
+  mode === 'race' ? d.race_ethnicity === 'white_asian' : d.ses === 'higher'
+
 const getFaceSrc912 = (d: Node, mode: Mode, highId: number): string => {
   if (mode === 'race') {
     return d.id === highId ? '/assets/whiteasian-dot-912.svg' : '/assets/poc-dot-912.svg'
@@ -74,45 +81,62 @@ const getEdgeColor912 = (d: Edge, mode: Mode): string => {
   return src.ses === 'higher' ? '#F17091' : '#00B178'
 }
 
-// Node counts here (249-327 per grade) sit in the same range that made
+// Node counts here (239-327 per grade) sit in the same range that made
 // grade 6's comparison-school graph glitchy in GraphSection68 (343 nodes
-// uncapped was the problem there). Grade 9 uses a >=2 weight threshold with
-// a moderate cap; grades 10-12 use >=1 (see MIN_EDGE_WEIGHT below) to bring
-// their density up toward grade 9's level, which needs smaller node caps to
-// keep total edge count in the same safe ballpark (~2000-2500 edges) rather
-// than ballooning from the lower threshold.
+// uncapped was the problem there), so all four grades stay capped. These
+// caps were previously much smaller for grades 10-12 (160/160/180) to keep
+// total edge count down given the old (incorrectly low) >=1 weight
+// threshold — see MIN_EDGE_WEIGHT below. Now that threshold is back to >=2
+// for all grades, those small caps left 10-12 far too thin (~4-5 edges/node
+// vs 6-8's ~8-8.7). Raised here to bring density back in line: grade 10's
+// 280 lands its final rendered density (~8.5 edges/node, ~2300 edges) right
+// in GraphSection68's range; grades 11 (270) and 12 (245) are set just
+// above their real filtered population (266 and 239 respectively), i.e.
+// effectively "no sampling" for those two, letting their genuinely thinner
+// data (course pathways diverging further each year) show through rather
+// than being artificially padded or over-thinned.
 const NODE_SAMPLE_CAP: Record<number, number> = {
   0: 240, // grade 9
-  1: 160, // grade 10
-  2: 160, // grade 11
-  3: 180, // grade 12
+  1: 280, // grade 10
+  2: 270, // grade 11 (full population; no sampling)
+  3: 245, // grade 12 (full population; no sampling)
 }
 
-// Grade 9 keeps the >=2 threshold (already dense enough there); grades
-// 10-12 naturally thin out with fewer students sharing 2+ classes as course
-// pathways diverge further each year, so >=1 is used instead to keep visual
-// density comparable across all four rather than tapering off.
+// All four grades use the same >=2 threshold. An earlier version dropped
+// grades 10-12 to >=1 on the theory that they "naturally thin out" and
+// needed a lower bar to stay visually comparable to grade 9 — but measured
+// against the real data, that was backwards: >=1 pulls in every weak,
+// single-shared-class edge, which made grades 10-12 come out at ~18-20
+// edges/node after sampling — roughly *double* grade 9's own density (~10)
+// and 2-2.5x GraphSection68's 6-8 density (~8-8.7). A force layout at that
+// edge density collapses into a uniformly tightly-packed mass with no real
+// distance differentiation between nodes, which is what was actually
+// producing the "gridded" look — not a force-parameter problem. At >=2
+// uniformly, grades 10-12 do come out thinner than grade 9 (~4-5 edges/node
+// vs ~10) — that's the real "pathways diverge further each year" trend the
+// original comment predicted, just true at >=2 rather than >=1. If that
+// ends up reading as too sparse visually, compensate via NODE_SAMPLE_CAP
+// (more nodes) rather than lowering this threshold again.
 const MIN_EDGE_WEIGHT: Record<number, number> = {
   0: 2,
-  1: 1,
-  2: 1,
-  3: 1,
+  1: 2,
+  2: 2,
+  3: 2,
 }
 
-// Grade 9 (step 0) already spaces out well on its own — fewer, stronger
-// ties (higher edge-weight threshold) naturally settle at a comfortable
-// distance under the same charge. Grades 10-12 keep far more (weaker) ties
-// overall, so they need more repulsion power to reach a similarly natural-
-// looking equilibrium. This — not an artificial minimum-distance rule
-// forced onto every node via collision radius — is what actually
-// determines organic spacing: a uniform collision radius bump read as
-// manufactured, man-made shapes rather than the graph finding its own
-// natural layout, so that approach was reverted in favor of this.
+// The old -75/-115 split was compensating for the link-strength floor
+// (removed above) — grade 9 needed weak charge to stay "spaced out," 10-12
+// needed strong charge to avoid the same uniform-spring mesh visibly
+// crystallizing. Now that real per-edge strength variation is restored,
+// that split isn't the right lever anymore: a single moderate charge
+// behaves consistently across all four grades, since it's the springs
+// doing the cluster-differentiation work, not the charge fighting a
+// uniform mesh. -90 sits between the old extremes.
 const CHARGE_STRENGTH: Record<number, number> = {
-  0: -75,
-  1: -115,
-  2: -115,
-  3: -115,
+  0: -90,
+  1: -90,
+  2: -90,
+  3: -90,
 }
 
 function sampleNodes(nodes: Node[], cap: number, highId: number, lowId: number): Node[] {
@@ -228,6 +252,49 @@ function keepLargestComponent(
   }
 }
 
+// The weight>=2 threshold + degree-4 prune + largest-component filtering
+// above (all needed to avoid noise/floaters — see their own comments) ends
+// up dropping a lot of REAL students who simply don't share 2+ classes
+// with any ONE person: grade 12's ~239 real students shrinks well below
+// grade 9's ~240 this way, reading as far less node/edge-dense even though
+// both datasets have a similar number of real students. Rather than lower
+// the weight threshold again (which reintroduces the grid/lattice problem
+// from over-uniform edge strength — see MIN_EDGE_WEIGHT/CHARGE_STRENGTH
+// comments), each dropped-but-real student who has at least FOUR real ties
+// (even weight 1 each) into the surviving graph gets pulled back in, with
+// ALL of those ties included — not just the strongest one. A lower bar (2)
+// was tried first and fixed the "floats off the graph" problem, but still
+// let through the occasional student with only 2-3 total connections,
+// which reads as unrealistically thin for a real course-sharing pattern.
+// Matching the structural prune's own threshold (see pruneLowDegree call
+// above) means no rendered node, structural or rescued, ever has fewer
+// than 4 real connections. This is different from a "floater" (gotcha
+// #12): a floater is a small clique disconnected from the main mass;
+// these are 4+ real ties INTO the main mass, so the node gets held in
+// place by it from multiple directions, not flung away from it. Brings
+// grade 12 up to ~233 nodes / ~2243 edges and grade 11 to ~266 nodes /
+// ~2597 edges — both now in the same density range as grade 9 and
+// GraphSection68's 6-8, not flooding.
+function rescueDroppedNodes(
+  sampledNodes: Node[], survivingIds: Set<number>, anyWeightPool: Edge[]
+): { nodes: Node[]; edges: Edge[] } {
+  const rescuedNodes: Node[] = []
+  const rescuedEdges: Edge[] = []
+  for (const n of sampledNodes) {
+    if (survivingIds.has(n.id)) continue
+    const ties = anyWeightPool.filter(e => {
+      const s = e.source as number, t = e.target as number
+      const other = s === n.id ? t : (t === n.id ? s : null)
+      return other !== null && survivingIds.has(other)
+    })
+    if (ties.length >= 4) {
+      rescuedNodes.push(n)
+      rescuedEdges.push(...ties)
+    }
+  }
+  return { nodes: rescuedNodes, edges: rescuedEdges }
+}
+
 export default function GraphSection912({ mode, resetSignal }: { mode: Mode; resetSignal?: number }) {
   // [9th, 10th, 11th, 12th] — converted from the real GML course-sharing
   // data via scripts/convert_gml_to_json.py, dropped into public/data/graphs/
@@ -339,25 +406,55 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
     const nodesToUse = sampleNodes(filteredFullNodes, NODE_SAMPLE_CAP[currentStep] ?? 300, highId, lowId)
     fullPopulationRef.current = filteredFullNodes.map(n => ({ ...n }))
 
+    // A brand-new node (no `existing` — i.e. this grade has never been
+    // simulated yet this session) previously started at a purely random
+    // spot within 80px of dead center for every node regardless of group,
+    // meaning "looking segregated" depended entirely on the simulation
+    // having enough time to fully converge from a scrambled starting
+    // point before anyone looked at it. On a true first-ever load that
+    // convergence hadn't finished (alphaDecay cools the sim down before
+    // full reorganization from a total scramble), so it visibly read as
+    // unsegregated — then looked right on a later revisit because
+    // `existing` positions from the previous (by-then-converged) visit
+    // carried over instead of restarting from scratch. Biasing the
+    // cold-start x-position by group (same grouping as getNodeColor912)
+    // means the simulation starts from an already-roughly-separated
+    // arrangement, so clusters read correctly from the first frame
+    // regardless of how far the simulation gets to run — not just on
+    // revisits.
     let newNodes: Node[] = nodesToUse.map(n => {
       const existing = existingById.get(n.id)
-      return existing
-        ? { ...n, x: existing.x, y: existing.y, vx: existing.vx, vy: existing.vy, fx: null, fy: null }
-        : { ...n, x: cx + (Math.random() - 0.5) * 80, y: cy + (Math.random() - 0.5) * 80 }
+      if (existing) {
+        return { ...n, x: existing.x, y: existing.y, vx: existing.vx, vy: existing.vy, fx: null, fy: null }
+      }
+      const groupOffset = isHighGroup912(n, mode) ? -110 : 110
+      return { ...n, x: cx + groupOffset + (Math.random() - 0.5) * 70, y: cy + (Math.random() - 0.5) * 70 }
     })
+    // Saved before pruning reassigns newNodes below — the rescue pass
+    // needs the full positioned sampled set, not just whoever survives
+    // pruning, to know who's eligible to be rescued.
+    const allSampledPositioned = newNodes
     const filteredNodeIds = new Set(newNodes.map(n => n.id))
     const minWeight = MIN_EDGE_WEIGHT[currentStep] ?? 2
-    const rawEdges: Edge[] = data.edges
+    // Kept separately, unfiltered by minWeight, for the rescue pass below
+    // (rescueDroppedNodes) — that pass deliberately needs access to
+    // weight-1 ties, which the structural graph itself excludes.
+    const rawEdgesAnyWeight: Edge[] = data.edges.map(e => ({ ...e }))
+    const rawEdges: Edge[] = rawEdgesAnyWeight
       .filter(e => e.weight >= minWeight)
       .filter(e => filteredNodeIds.has(e.source as number) && filteredNodeIds.has(e.target as number))
-      .map(e => ({ ...e }))
 
     // Prune stray low-degree nodes (isolated or single-edge) — common for
     // students whose only shared classes are a single large elective
     // (JROTC, PE, etc.), leaving them floating with barely any real
     // connections. Protagonists are always kept regardless of their own
     // degree.
-    const pruned = pruneLowDegree(newNodes, rawEdges, highId, lowId, 3)
+    // minDegree raised from 3 to 4 — a student who shares classes with
+    // only 2-3 people is realistic-but-uncommon at this granularity and
+    // read as noticeably thin/unrealistic on screen. See the matching
+    // rescue-threshold bump below for why this doesn't just thin the
+    // graph out further.
+    const pruned = pruneLowDegree(newNodes, rawEdges, highId, lowId, 4)
     newNodes = pruned.nodes
     let newEdges: Edge[] = pruned.edges
 
@@ -372,6 +469,18 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
     newNodes = largestComponent.nodes
     newEdges = largestComponent.edges
 
+    // Bring back real students dropped above purely for being thinly
+    // connected (single weight-1 tie), anchored to their one real
+    // connection — see rescueDroppedNodes comment above for why this is
+    // different from a floater.
+    const survivingIds = new Set(newNodes.map(n => n.id))
+    const anyWeightPool: Edge[] = rawEdgesAnyWeight.filter(
+      e => filteredNodeIds.has(e.source as number) && filteredNodeIds.has(e.target as number)
+    )
+    const rescued = rescueDroppedNodes(allSampledPositioned, survivingIds, anyWeightPool)
+    newNodes = [...newNodes, ...rescued.nodes]
+    newEdges = [...newEdges, ...rescued.edges]
+
     activeNodesRef.current = newNodes
     activeEdgesRef.current = newEdges
 
@@ -384,41 +493,38 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
 
     if (simulationRef.current) simulationRef.current.stop()
 
-    // Was identical to GraphSection68's physics, but 9-12's data is
-    // inherently sparser than 6-8's at the same weight threshold (more
-    // elective/track diversity means far fewer 3+-class overlaps — see the
-    // MIN_EDGE_WEIGHT comment above). Shrinking distanceMax was an earlier
-    // attempt to compensate, but that fights directly against wanting this
-    // graph to spread out as much as 6-8 does — and it wasn't strong enough
-    // to reliably anchor the weakest nodes anyway, since shrinking the
-    // charge's reach doesn't add any actual PULL on them, it just softens
-    // drift overall. distanceMax started back at matching 68's 300, then
-    // pushed further (along with charge strength) for more spread than 68
-    // itself, per request. 0.4 for the link-strength floor over-corrected
-    // once distanceMax/charge went up further — in grades 10-12
-    // (MIN_EDGE_WEIGHT 1), the vast majority of edges ARE weight-1, so
-    // that floor was pulling nearly every edge at that same strength, not
-    // just the true stragglers, over-tightening the whole graph rather
-    // than just anchoring outliers (grade 9's higher MIN_EDGE_WEIGHT of 2
-    // masked this, which is why only 9 looked fine). The floaters instead
-    // get handled by:
-    // - A modest floor on link strength (just enough over the original
-    //   uncapped ~0.06-0.12 for typical weights to help, without forcing
-    //   nearly every edge to the same value).
-    // - A slightly stronger constant pull toward center (forceX/forceY)
-    //   picking up more of the anchoring work instead.
-    // - A larger collision radius, which is what actually guarantees a
-    //   minimum gap between any two nodes regardless of how hard the
-    //   other forces pull them together — the more direct fix for nodes
-    //   visually touching/overlapping.
-    // Grades 10-12 needing more spacing than grade 9 is handled via
-    // per-step charge strength (CHARGE_STRENGTH above) rather than
-    // per-step collision radius — see that comment for why.
-    // Node/edge data itself is untouched, so volume is unaffected.
+    // History: this started as a copy of GraphSection68's physics, then
+    // went through several rounds of compensating distanceMax/charge/a
+    // link-strength floor for what looked like sparser 9-12 data. That
+    // diagnosis was wrong — see the MIN_EDGE_WEIGHT and CHARGE_STRENGTH
+    // comments above for what the real issue was (a link-strength floor
+    // uniforming 94-98% of edges to identical stiffness, not data
+    // sparsity) and why those two are now fixed rather than compensated
+    // around. distanceMax stays at 340 (between 68's 300 and this
+    // section's earlier pushed-further value) and forceX/forceY/collision
+    // below are unchanged from before that fix.
+    // The link-strength floor here (Math.max(0.22, ...)) was added when
+    // grades 10-12 used MIN_EDGE_WEIGHT=1, to rescue weight-1 ties from a
+    // weak 0.06 raw strength. Now that MIN_EDGE_WEIGHT=2 everywhere, every
+    // included edge's raw strength is already >=0.12, so that floor no
+    // longer rescues anything — measured against the real data, it was
+    // instead forcing 94-98% of edges in EVERY grade (9 through 12) to the
+    // exact same strength regardless of their actual weight. A spring
+    // network where nearly every spring has identical stiffness is what
+    // was producing the grid/lattice look: grade 9's weaker charge (-75)
+    // let that uniform mesh snap into a visible lattice, while 10-12's
+    // stronger charge (-115) just spread the same rigid, undifferentiated
+    // mesh into diffuse, evenly-spaced sparseness instead — neither was
+    // forming real organic clusters, the springs just couldn't
+    // differentiate. Removing the floor (matching GraphSection68's
+    // uncapped `weight * 0.06`) lets genuine multi-class ties pull
+    // tighter into visible, denser clusters while single-class ties stay
+    // loose, for all four grades at once — no data or edge-count change,
+    // so no load-time impact.
     const simulation = d3.forceSimulation<Node>(newNodes)
       .force('link', d3.forceLink<Node, Edge>(newEdges).id(d => d.id)
         .distance(d => Math.max(15, 80 - ((d as unknown as Edge).weight * 5)))
-        .strength(d => Math.max(0.22, Math.min(1, (d as unknown as Edge).weight * 0.06))))
+        .strength(d => Math.min(1, (d as unknown as Edge).weight * 0.06)))
       .force('charge', d3.forceManyBody().strength(CHARGE_STRENGTH[currentStep] ?? -75).distanceMax(340))
       .force('center', d3.forceCenter(cx, cy))
       .force('x', d3.forceX(cx).strength(0.028))
