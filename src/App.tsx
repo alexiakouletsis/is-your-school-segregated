@@ -41,6 +41,77 @@ function App() {
   // plus scrolling down from the resulting restarted landing page, not to
   // Conclusion's animation completing on its own.
   const [hasToggledFromConclusion, setHasToggledFromConclusion] = useState(false)
+  // Each bumped independently by skipAnimationsUpTo below — separate
+  // counters (not one shared signal) so each freeze-gated section can be
+  // skipped INDEPENDENTLY depending on where the user actually clicked.
+  // See skipAnimationsUpTo's own comment for why that distinction matters.
+  const [skipSection01Signal, setSkipSection01Signal] = useState(0)
+  const [skipPart2Signal, setSkipPart2Signal] = useState(0)
+  const [skipSection02Signal, setSkipSection02Signal] = useState(0)
+  const [skipSection03IntroSignal, setSkipSection03IntroSignal] = useState(0)
+  const [skipSection03Part2Signal, setSkipSection03Part2Signal] = useState(0)
+
+  // Page order, as laid out in ArticleSection.tsx — only the entries that
+  // matter for this: the four nav-jumpable graph ids, and every
+  // freeze-gated section that sits somewhere between them. Numbers are
+  // arbitrary, only their relative order matters.
+  const PAGE_ORDER: Record<string, number> = {
+    section01: 0, 'graph-k3': 1, part2: 2, 'graph-45': 3, section02: 4,
+    'graph-68': 5, section03Intro: 6, section03Part2: 7, 'graph-912': 8,
+  }
+
+  // Called by NavBar right before it jumps to a section via scrollIntoView.
+  // That jump passes THROUGH every earlier freeze-gated section's own
+  // scroll-linked "settled" threshold on the way — those thresholds are
+  // pure scroll-position checks, so they fire regardless of whether the
+  // scroll was a slow manual one or scrollIntoView's fast programmatic
+  // one. Without skipping those sections, one would end up "settled"
+  // (wheel-lock engaged, lockPos captured at wherever it happened to be
+  // mid-jump) but never actually "done" (its typing never got a chance to
+  // run), so the very next wheel tick after landing on the destination
+  // graph snaps the page back to that stale mid-jump position — the exact
+  // "teleported back to where sections are animating in" bug.
+  //
+  // Only sections strictly BEFORE the clicked destination (per PAGE_ORDER)
+  // get skipped — a jump to graph-68 has no business marking Section03Part2
+  // or GraphSection912 as already played, since the user hasn't reached
+  // them yet and should still get their normal scroll-triggered animation
+  // when they actually get there. An earlier version of this skipped
+  // everything unconditionally regardless of destination, which meant
+  // jumping to grades 6-8 silently pre-completed the freeze-frame section
+  // and beyond, so scrolling into them later showed nothing left to
+  // animate.
+  const skipAnimationsUpTo = (targetId: string) => {
+    const targetIndex = PAGE_ORDER[targetId] ?? Infinity
+    // Hero's own intro/curtain lock only ever engages after the
+    // press-and-hold gesture has actually been started (see App.tsx's
+    // wheel-lock condition), so this is a no-op in the common "cheated
+    // straight past it" case — but harmless, and correct, to always mark
+    // it done regardless of target, since every nav destination is after it.
+    setCurtainDone(true)
+    setTypingDone(true)
+    if (targetIndex > PAGE_ORDER.section01) {
+      setSectionAnimDone(true)
+      setSectionOverlaySettled(true)
+      setSkipSection01Signal(v => v + 1)
+    }
+    if (targetIndex > PAGE_ORDER.part2) {
+      setPart2AnimDone(true)
+      setPart2OverlaySettled(true)
+      setSkipPart2Signal(v => v + 1)
+    }
+    if (targetIndex > PAGE_ORDER.section02) {
+      setSkipSection02Signal(v => v + 1)
+    }
+    if (targetIndex > PAGE_ORDER.section03Intro) {
+      setSkipSection03IntroSignal(v => v + 1)
+    }
+    if (targetIndex > PAGE_ORDER.section03Part2) {
+      setSection03Part2AnimDone(true)
+      setSection03Part2OverlaySettled(true)
+      setSkipSection03Part2Signal(v => v + 1)
+    }
+  }
 
   const scrollLockPos = useRef<number | null>(null)
   const sectionLockPos = useRef<number | null>(null)
@@ -376,6 +447,11 @@ function App() {
         }}
         onToggleModeAndScrollTop={handleToggleModeAndScrollTop}
         graphResetSignal={graphResetSignal}
+        skipSection01Signal={skipSection01Signal}
+        skipPart2Signal={skipPart2Signal}
+        skipSection02Signal={skipSection02Signal}
+        skipSection03IntroSignal={skipSection03IntroSignal}
+        skipSection03Part2Signal={skipSection03Part2Signal}
         mode={mode}
       />
       {/* NavBar handles its own "hide at the landing page" detection
@@ -384,7 +460,7 @@ function App() {
           page reload that starts already-scrolled-down. The first-ever
           auto-reveal is tied to hasToggledFromConclusion plus scrolling
           down from the landing page afterward (handled inside NavBar). */}
-      <NavBar mode={mode} onToggleMode={toggleMode} hasToggledFromConclusion={hasToggledFromConclusion} />
+      <NavBar mode={mode} onToggleMode={toggleMode} hasToggledFromConclusion={hasToggledFromConclusion} onNavigate={skipAnimationsUpTo} />
     </main>
   )
 }

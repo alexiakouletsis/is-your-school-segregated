@@ -91,9 +91,17 @@ const INFO_FULL = INFO_BEFORE + INFO_LINK + INFO_AFTER
 interface Props {
   mode: Mode
   onToggleModeAndScrollTop?: () => void
+  // Bumped by App.tsx's skipAllIntroAnimations right before NavBar jumps
+  // to a section — see that comment. Forces this section's skipAll to
+  // run externally, the same way a click on it already does. Not
+  // currently reachable by any nav link (Conclusion has no SECTIONS
+  // entry and sits after GraphSection912, the last one that does), but
+  // wired the same way as every other freeze-gated section for
+  // consistency and in case that changes.
+  skipSignal?: number
 }
 
-export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {} }: Props) {
+export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, skipSignal }: Props) {
   const isMobile = useIsMobile()
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -266,6 +274,17 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {} }
     setInfoText(INFO_FULL)
     setInfoDone(true)
   }, [skipped, infoDone])
+
+  // External trigger for the same skip a click already does — see
+  // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
+  // dev-mode double-invoke the same way ArticleSection's forceStart is.
+  const lastSkipSignalRef = useRef(skipSignal)
+  useEffect(() => {
+    if (skipSignal === undefined) return
+    if (skipSignal === lastSkipSignalRef.current) return
+    lastSkipSignalRef.current = skipSignal
+    skipAll()
+  }, [skipSignal, skipAll])
 
   // local desktop-only scroll lock, mirroring Section02's own — holds
   // scroll at the position captured the instant the burst fired, until the

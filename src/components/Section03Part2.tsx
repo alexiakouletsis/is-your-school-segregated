@@ -26,10 +26,14 @@ interface Props {
   onAnimDone: () => void
   onOverlaySettled: (scrollY: number) => void
   onAnimReset?: () => void
+  // Bumped by App.tsx's skipAllIntroAnimations right before NavBar jumps
+  // to a section — see that comment. Forces this section's skipAll to
+  // run externally, the same way a click on it already does.
+  skipSignal?: number
   mode: Mode
 }
 
-export default function Section03Part2({ onAnimDone, onOverlaySettled, mode }: Props) {
+export default function Section03Part2({ onAnimDone, onOverlaySettled, skipSignal, mode }: Props) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   const [settled, setSettled] = useState(false)
@@ -66,12 +70,14 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled, mode }: P
       // applies on desktop), so there's no reason to wait until the section
       // has nearly scrolled past before starting the typing there — trigger
       // much earlier, as soon as the section is meaningfully in view.
-      // Desktop's threshold was lowered slightly from 0.90 — at 0.90 the
-      // freeze engaged just late enough that GraphSection912's top edge was
-      // already peeking into the locked viewport underneath this section's
-      // extra bottom padding; settling a touch earlier keeps the frozen
-      // frame higher up the page, clear of it.
-      const threshold = isMobile ? 0.3 : 0.85
+      // Desktop's threshold was lowered from 0.90 to 0.85 previously — at
+      // 0.90 the freeze engaged just late enough that GraphSection912's top
+      // edge was already peeking into the locked viewport underneath this
+      // section's extra bottom padding. 0.85 fixed that but overshot the
+      // other direction (froze noticeably early); 0.88 splits the
+      // difference — later/further down the page than 0.85, but with
+      // enough margin below 0.90 to still stay clear of the peeking issue.
+      const threshold = isMobile ? 0.3 : 0.88
       if (v >= threshold && !hasSettledRef.current) {
         hasSettledRef.current = true
         setSettled(true)
@@ -170,6 +176,17 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled, mode }: P
     setShowScroll(true)
     onAnimDone()
   }, [skipped, para2Done, onAnimDone, PARA2_FULL])
+
+  // External trigger for the same skip a click already does — see
+  // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
+  // dev-mode double-invoke the same way ArticleSection's forceStart is.
+  const lastSkipSignalRef = useRef(skipSignal)
+  useEffect(() => {
+    if (skipSignal === undefined) return
+    if (skipSignal === lastSkipSignalRef.current) return
+    lastSkipSignalRef.current = skipSignal
+    skipAll()
+  }, [skipSignal, skipAll])
 
   const para2Segments = mode === 'race' ? [
     { text: RACE_PARA2_BEFORE, color: null, big: false },

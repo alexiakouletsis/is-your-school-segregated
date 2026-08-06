@@ -63,6 +63,16 @@ interface Props {
   onSection03Part2AnimReset?: () => void
   onToggleModeAndScrollTop?: () => void
   graphResetSignal?: number
+  // Each bumped independently by App.tsx's skipAnimationsUpTo, only for
+  // sections before whichever nav destination was actually clicked — see
+  // that function's comment. skipSection01Signal drives this component's
+  // own inline Section 01 paragraph; the rest are forwarded as-is to
+  // their respective child below.
+  skipSection01Signal?: number
+  skipPart2Signal?: number
+  skipSection02Signal?: number
+  skipSection03IntroSignal?: number
+  skipSection03Part2Signal?: number
   mode: Mode
   forceStart?: number
 }
@@ -79,6 +89,11 @@ export default function ArticleSection({
   onSection03Part2AnimReset = () => {},
   onToggleModeAndScrollTop = () => {},
   graphResetSignal = 0,
+  skipSection01Signal,
+  skipPart2Signal,
+  skipSection02Signal,
+  skipSection03IntroSignal,
+  skipSection03Part2Signal,
   mode,
   forceStart,
 }: Props) {
@@ -212,6 +227,29 @@ export default function ArticleSection({
     setShowScroll(true)
     onAnimDone()
   }, [skipped, animsDone, onAnimDone, PARA_FULL])
+
+  // External trigger for the same skip this section already does on
+  // click — see App.tsx's skipAllIntroAnimations for why. Guarded the
+  // same way forceStart is above: comparing against the last-seen value
+  // rather than a one-shot ref, since StrictMode's dev-mode double-invoke
+  // would otherwise let a stray second invocation slip through.
+  //
+  // Also sets forceStartedAtRef — same guard forceStart's own jump uses,
+  // and for the identical reason: NavBar's scrollIntoView jump necessarily
+  // passes through low v values on its way to the destination, and
+  // without this, the reset-check above (`v < 0.35 && !hasResetRef.current`)
+  // fires during that pass-through, wiping out everything skipAll just
+  // set (including reporting onAnimReset() up to App, which nulls the
+  // lock position) — landing the user all the way back at position 0
+  // instead of at the graph they navigated to.
+  const lastSkipSignalRef = useRef(skipSection01Signal)
+  useEffect(() => {
+    if (skipSection01Signal === undefined) return
+    if (skipSection01Signal === lastSkipSignalRef.current) return
+    lastSkipSignalRef.current = skipSection01Signal
+    forceStartedAtRef.current = Date.now()
+    skipAll()
+  }, [skipSection01Signal, skipAll])
 
   const renderPara = () => {
     let remaining = paraText
@@ -354,6 +392,7 @@ export default function ArticleSection({
             onAnimDone={onPart2AnimDone}
             onOverlaySettled={onPart2OverlaySettled}
             onAnimReset={onPart2AnimReset}
+            skipSignal={skipPart2Signal}
             mode={mode}
           />
         </div>
@@ -365,14 +404,15 @@ export default function ArticleSection({
           resetSignal={graphResetSignal}
         />
 
-        <Section02 mode={mode} />
+        <Section02 mode={mode} skipSignal={skipSection02Signal} />
         <GraphSection68 mode={mode} resetSignal={graphResetSignal} />
-        <Section03Intro mode={mode} />
+        <Section03Intro mode={mode} skipSignal={skipSection03IntroSignal} />
         <CourseClusterSection mode={mode} />
         <Section03Part2
           onAnimDone={onSection03Part2AnimDone}
           onOverlaySettled={onSection03Part2OverlaySettled}
           onAnimReset={onSection03Part2AnimReset}
+          skipSignal={skipSection03Part2Signal}
           mode={mode}
         />
         <GraphSection912 mode={mode} resetSignal={graphResetSignal} />

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { Mode } from '../App'
@@ -6,7 +6,7 @@ import type { Mode } from '../App'
 const PARA1_FULL = "Our two nodes are growing up. Now they get to make their schedules—but what to pick? Honors/AP or regular? What electives?"
 const PARA2_FULL = "Before we dive into how segregation now looks for our nodes in high school, let's first observe which specific classes in high school are most divisive."
 
-export default function Section03Intro({ mode }: { mode: Mode }) {
+export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipSignal?: number }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
@@ -94,7 +94,16 @@ export default function Section03Intro({ mode }: { mode: Mode }) {
           wallClosedRef.current = true
           setWallClosed(true)
         }
-      } else if (next >= 1 && !hasSettledRef.current) {
+      } else if (next >= 0.9 && !hasSettledRef.current) {
+        // Was next >= 1 — freezing at the literal end of the scroll range
+        // gave momentum scroll zero buffer to settle in before the lock
+        // engaged, so it fought the lock for a frame or two right at the
+        // boundary (the "vibrates a bit, then settles" feel). Freezing a
+        // bit earlier gives that momentum somewhere to bleed off before
+        // the lock takes over. partAmount below snaps the wall to fully
+        // open once settled, regardless of the exact p value it froze
+        // at, so freezing before p truly reaches 1 doesn't leave the wall
+        // looking stuck slightly-not-quite-open.
         hasSettledRef.current = true
         setSettled(true)
         lockScrollY.current = window.scrollY
@@ -196,8 +205,15 @@ export default function Section03Intro({ mode }: { mode: Mode }) {
     return () => clearTimeout(t)
   }, [para1Done, skipped])
 
-  const skipAll = () => {
+  const skipAll = useCallback(() => {
     if (skipped || para2Done) return
+    // Normally only reachable once settled is already true (this section
+    // only shows a skip affordance once settled) — set explicitly here too
+    // so this is safe to call externally, before that would have happened
+    // naturally. Without it, para1Text would be set to the full text but
+    // never actually render, since that paragraph reads
+    // `settled ? para1Text : ''`.
+    setSettled(true)
     setSkipped(true)
     clearInterval(para1Interval.current!)
     clearInterval(para2Interval.current!)
@@ -206,14 +222,27 @@ export default function Section03Intro({ mode }: { mode: Mode }) {
     setPara2Text(PARA2_FULL)
     setPara2Done(true)
     setShowScroll(true)
-  }
+  }, [skipped, para2Done])
+
+  // External trigger for the same skip a click already does — see
+  // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
+  // dev-mode double-invoke the same way ArticleSection's forceStart is.
+  const lastSkipSignalRef = useRef(skipSignal)
+  useEffect(() => {
+    if (skipSignal === undefined) return
+    if (skipSignal === lastSkipSignalRef.current) return
+    lastSkipSignalRef.current = skipSignal
+    skipAll()
+  }, [skipSignal, skipAll])
 
   // Closed (0) -> fully open (1). Desktop: driven directly by scroll,
-  // holding closed until PART_START. Mobile: held at 0 regardless of
-  // scroll once the wall is closed, only advancing via the tap-triggered
-  // timer above.
+  // holding closed until PART_START, then snapping to fully open once
+  // settled (see the settle-threshold comment above for why that's now
+  // slightly before p actually reaches 1). Mobile: held at 0 regardless
+  // of scroll once the wall is closed, only advancing via the
+  // tap-triggered timer above.
   const scrollPartAmount = p <= PART_START ? 0 : Math.min(1, (p - PART_START) / (1 - PART_START))
-  const partAmount = isMobile ? (mobileTapped ? mobileOpenProgress : 0) : scrollPartAmount
+  const partAmount = isMobile ? (mobileTapped ? mobileOpenProgress : 0) : (settled ? 1 : scrollPartAmount)
   const leftPartX = `${-partAmount * 100}%`
   const rightPartX = `${partAmount * 100}%`
   // Mobile-only: content used to fade in at the exact same rate as the

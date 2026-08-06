@@ -37,7 +37,7 @@ function generateDots(mode: Mode, count: number): Dot[] {
   return dots
 }
 
-export default function Section02({ mode }: { mode: Mode }) {
+export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal?: number }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
   // Measured via window.innerWidth rather than trusted to the CSS `100vw`
@@ -210,12 +210,30 @@ export default function Section02({ mode }: { mode: Mode }) {
 
   const skipAll = useCallback(() => {
     if (skipped || typingDone) return
+    // Normally only reachable once typingStarted.current is already true
+    // (the onClick that calls this is gated on it) — set explicitly here
+    // too so this is safe to call externally, before that would have
+    // happened naturally. Without it, paraText would be set to the full
+    // text but never actually render, since the text layer reads
+    // `typingStarted.current ? paraText : ''`.
+    typingStarted.current = true
     setSkipped(true)
     clearInterval(paraInterval.current!)
     setParaText(PARA)
     setTypingDone(true)
     setShowScroll(true)
   }, [skipped, typingDone])
+
+  // External trigger for the same skip a click already does — see
+  // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
+  // dev-mode double-invoke the same way ArticleSection's forceStart is.
+  const lastSkipSignalRef = useRef(skipSignal)
+  useEffect(() => {
+    if (skipSignal === undefined) return
+    if (skipSignal === lastSkipSignalRef.current) return
+    lastSkipSignalRef.current = skipSignal
+    skipAll()
+  }, [skipSignal, skipAll])
 
   const getDotOpacity = (dot: Dot, p: number) => {
     const yFrac = dot.y / 100

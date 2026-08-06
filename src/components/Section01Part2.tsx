@@ -31,10 +31,14 @@ interface Props {
   onAnimDone: () => void
   onOverlaySettled: (scrollY: number) => void
   onAnimReset?: () => void
+  // Bumped by App.tsx's skipAllIntroAnimations right before NavBar jumps
+  // to a section — see that comment. Forces this section's skipAll to
+  // run externally, the same way a click on it already does.
+  skipSignal?: number
   mode: Mode
 }
 
-export default function Section01Part2({ onAnimDone, onOverlaySettled, mode }: Props) {
+export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSignal, mode }: Props) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   const [showDefinition, setShowDefinition] = useState(false)
@@ -140,6 +144,17 @@ export default function Section01Part2({ onAnimDone, onOverlaySettled, mode }: P
     setShowScroll(true)
     onAnimDone()
   }, [skipped, para2Done, onAnimDone, PARA2_FULL])
+
+  // External trigger for the same skip a click already does — see
+  // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
+  // dev-mode double-invoke the same way ArticleSection's forceStart is.
+  const lastSkipSignalRef = useRef(skipSignal)
+  useEffect(() => {
+    if (skipSignal === undefined) return
+    if (skipSignal === lastSkipSignalRef.current) return
+    lastSkipSignalRef.current = skipSignal
+    skipAll()
+  }, [skipSignal, skipAll])
 
   const renderPara1 = () => {
     const boldStart = PARA1_BEFORE.length

@@ -139,7 +139,27 @@ export default function GraphSection45({ mode, initialNodes, grade3Version, rese
         if (fromG3?.x !== undefined) return { ...n, x: fromG3.x, y: fromG3.y }
         const existing = existingById.get(n.id)
         if (existing?.x !== undefined) return { ...n, x: existing.x, y: existing.y }
-        return { ...n, x: cx + (Math.random() - 0.5) * 100, y: cy + (Math.random() - 0.5) * 100 }
+        // Last-resort fallback, when finalGrade3NodesRef hasn't arrived yet
+        // (only fires once GraphSection's own onGrade3Complete reaches ITS
+        // final step — e.g. never happens if this section is reached via a
+        // nav-bar jump straight past GraphSection entirely) AND there's no
+        // prior activeNodesRef position either (a true first-ever render).
+        // Step 0 deliberately uses near-zero charge (-2) below, to preserve
+        // the inherited K-3 pod layout without redoing that physics from
+        // scratch — but that also means whatever THIS scatter starts at is
+        // essentially the final layout too, since nothing meaningfully
+        // expands it further. A small fixed +/-100px window here used to
+        // leave every node clustered tightly near center regardless of the
+        // panel's actual size, and autoZoom (correctly) measured that tiny
+        // bounding box and zoomed way in to fill the panel with it —
+        // mathematically right, visually "too zoomed in." Scaling this to
+        // the real panel dimensions instead gives autoZoom a sane extent
+        // to fit even in this fallback case.
+        return {
+          ...n,
+          x: cx + (Math.random() - 0.5) * width * 0.7,
+          y: cy + (Math.random() - 0.5) * height * 0.7,
+        }
       })
       newEdges = data.edges.map(e => ({ ...e }))
     } else {

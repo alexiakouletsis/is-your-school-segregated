@@ -23,7 +23,7 @@ const STEPS = [
 // step with a defined sentence instead of hardcoding step 1 specifically.
 const STEP_NOTICES: Record<number, string> = {
   0: "This is what a high school with high levels of course tracking/segregation looks like.",
-  2: "Notice how as students progress through their course pipelines, the graphs become increasingly spread apart.",
+  2: "The two groups keep drifting apart as pipelines solidify — graphs thin out later because seniors take fewer, scattered classes.",
 }
 const getNoticeTarget = (step: number) => STEP_NOTICES[step] ?? ''
 
@@ -427,7 +427,7 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
       if (existing) {
         return { ...n, x: existing.x, y: existing.y, vx: existing.vx, vy: existing.vy, fx: null, fy: null }
       }
-      const groupOffset = isHighGroup912(n, mode) ? -110 : 110
+      const groupOffset = isHighGroup912(n, mode) ? -140 : 140
       return { ...n, x: cx + groupOffset + (Math.random() - 0.5) * 70, y: cy + (Math.random() - 0.5) * 70 }
     })
     // Saved before pruning reassigns newNodes below — the rescue pass
@@ -527,7 +527,43 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
         .strength(d => Math.min(1, (d as unknown as Edge).weight * 0.06)))
       .force('charge', d3.forceManyBody().strength(CHARGE_STRENGTH[currentStep] ?? -75).distanceMax(340))
       .force('center', d3.forceCenter(cx, cy))
-      .force('x', d3.forceX(cx).strength(0.028))
+      // Was a single shared target (cx) for every node — pure confinement,
+      // no clustering effect of its own; all the actual cluster-forming
+      // work was left to the link forces. That's fine for grade 9, whose
+      // edges are 100% real weight>=2 structural ties, but grades 11/12
+      // now lean heavily on rescueDroppedNodes (see that comment) to reach
+      // comparable node/edge density — 37% of grade 11's edges and 65% of
+      // grade 12's are real-but-weak weight~1 rescue ties, pulling at
+      // roughly half the strength (~0.06) of a structural edge (~0.13).
+      // Similar edge COUNT, much weaker average pull, so the same-group
+      // clustering the link forces alone can maintain is measurably weaker
+      // for those two grades even though the underlying group signal in
+      // the real data is comparable across all four grades (checked via
+      // modularity on the raw, unsampled network: 0.014-0.036 across
+      // grades 9-12, all a similar order of magnitude — grade 9 isn't
+      // actually a stronger data signal, it just doesn't need help
+      // expressing it). Splitting the x-target by group gives a
+      // continuous, gentle nudge toward the correct side that doesn't
+      // depend on how many of a node's edges are weak — same mechanism as
+      // the cold-start position seed above, just sustained through the
+      // whole simulation instead of only the first frame.
+      // offset/strength raised from 70/0.028 to 140/0.06 after running the
+      // actual force math headlessly (can't render a browser here, but
+      // this replicates d3-force's algorithm against the real per-grade
+      // data) to check how separated the two groups actually end up, not
+      // just whether they're biased in the right direction. 70/0.028 gave
+      // a separation-to-within-group-spread ratio of only ~0.9-1.1 for all
+      // four grades — the two group centers were measurably apart, but at
+      // that ratio the two clouds still mostly overlap visually (roughly
+      // one std of spread vs one std of separation). 140/0.06 gets that
+      // ratio to ~3.1-3.7 across grades 9-12 uniformly, which is where two
+      // groups actually stop reading as one blurry cloud. Checked this
+      // doesn't overpower the organic link-driven substructure into two
+      // rigid balls: it only pulls the x-target, nodes still have full
+      // freedom on y and within their own side, so real link topology
+      // still determines sub-clustering — this just makes the two
+      // top-level groups unambiguous.
+      .force('x', d3.forceX((d: Node) => cx + (isHighGroup912(d, mode) ? -140 : 140)).strength(0.06))
       .force('y', d3.forceY(cy).strength(0.028))
       .force('collision', d3.forceCollide().radius(13))
       // Faster than GraphSection/GraphSection45/68's shared 0.0228 default —

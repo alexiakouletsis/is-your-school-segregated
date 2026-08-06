@@ -21,6 +21,10 @@ interface Props {
   // navUnlocked below); it stays true for the rest of the session
   // afterward regardless of further toggles.
   hasToggledFromConclusion: boolean
+  // Called right before scrollToSection jumps, with the target section's
+  // id — see App.tsx's skipAnimationsUpTo for why the id matters (only
+  // sections before the destination should be skipped, not everything).
+  onNavigate?: (id: string) => void
 }
 
 // Rendered as a sibling of ArticleSection in App.tsx, NOT nested inside it —
@@ -30,7 +34,7 @@ interface Props {
 // doesn't perfectly pin inside the transformed wrapper" issue already
 // documented elsewhere in this codebase — keeping this component outside
 // that tree entirely avoids it rather than working around it.
-export default function NavBar({ mode, onToggleMode, hasToggledFromConclusion }: Props) {
+export default function NavBar({ mode, onToggleMode, hasToggledFromConclusion, onNavigate }: Props) {
   const isMobile = useIsMobile()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [tooltipVisible, setTooltipVisible] = useState(false)
@@ -108,6 +112,7 @@ export default function NavBar({ mode, onToggleMode, hasToggledFromConclusion }:
     : barVisible && !atLandingPage
 
   const scrollToSection = (id: string) => {
+    onNavigate?.(id)
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     setMobileOpen(false)
   }
