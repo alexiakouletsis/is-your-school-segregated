@@ -7,8 +7,8 @@ import {
   type CoursesRaw, type CourseStat,
 } from './courseUtils'
 
-const SES_PARA = "Every course below was taken by at least 50 students across the Winston-Salem/Forsyth County high schools \u2014 ranked from the most heavily above the SES line to the most heavily below it."
-const RACE_PARA = "Every course below was taken by at least 50 students across the Winston-Salem/Forsyth County high schools \u2014 ranked from the most heavily white/asian to the most heavily student-of-color."
+const SES_PARA = "Every course below was taken by at least 50 students across high schools in that district \u2014 ranked from the most heavily above the SES line to the most heavily below it."
+const RACE_PARA = "Every course below was taken by at least 50 students across high schools in that district \u2014 ranked from the most heavily white/asian to the most heavily student-of-color."
 
 interface Props {
   mode: Mode

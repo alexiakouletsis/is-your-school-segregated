@@ -308,11 +308,30 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
   // got rendered/simulated.
   const fullPopulationRef = useRef<Node[]>([])
 
+  // Bumped on click to skip whatever typing animation is currently
+  // running — the notice text (handled directly in the click handler
+  // below) and NodeStats' own entrance sequence (via its skipSignal prop).
+  // Harmless to bump even when nothing is typing.
+  const [skipTypingSignal, setSkipTypingSignal] = useState(0)
+
   // Guards against scrolling straight past a step before its render has
   // actually painted, same purpose as GraphSection68's altStepEnteredAtRef
   // — every step here is comparably heavy (real per-grade data), so the
   // buffer applies to all of them rather than just specific ones.
   const stepEnteredAtRef = useRef(0)
+
+  // Unlike GraphSection68 (where step 0 is a dialogue phase that only ever
+  // plays once actually scrolled into view, via IntersectionObserver/
+  // scroll-position checks), this section has no such gate on its own step
+  // 0 — currentStep starts at 0 from the moment the whole page mounts
+  // (every section mounts up front, not on-demand), so without this, the
+  // notice-typing effect below fires immediately at page load and finishes
+  // typing in the background long before the user actually scrolls this
+  // far down — by the time they arrive, everything already looks "done."
+  // This mirrors GraphSection68's own entry-detection exactly, just
+  // generalized to fire once regardless of which step is current.
+  const hasEnteredSectionRef = useRef(false)
+  const [hasEnteredSection, setHasEnteredSection] = useState(false)
 
   const {
     currentStep, setCurrentStep, hoveredNode, setHoveredNode, graphSize,
@@ -323,6 +342,38 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
     steps: STEPS,
     blockScrollForward: () => Date.now() - stepEnteredAtRef.current < 900,
   })
+
+  useEffect(() => {
+    if (hasEnteredSectionRef.current || !sectionRef.current) return
+    const markEntered = () => {
+      if (hasEnteredSectionRef.current) return
+      hasEnteredSectionRef.current = true
+      setHasEnteredSection(true)
+    }
+    if (isMobile) {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0]?.isIntersecting) {
+          observer.disconnect()
+          markEntered()
+        }
+      }, { threshold: 0.5 })
+      observer.observe(sectionRef.current)
+      return () => observer.disconnect()
+    } else {
+      const tryMark = () => {
+        if (hasEnteredSectionRef.current || !sectionRef.current) return
+        const rect = sectionRef.current.getBoundingClientRect()
+        if (rect.top <= 10 && rect.top >= -10) {
+          window.removeEventListener('scroll', tryMark)
+          markEntered()
+        }
+      }
+      tryMark()
+      window.addEventListener('scroll', tryMark, { passive: true })
+      return () => window.removeEventListener('scroll', tryMark)
+    }
+  }, [isMobile])
+
 
   // Only bumped by Conclusion's bottom-of-page toggle (a deliberate full
   // restart), never by a plain mode change — see the comment on
@@ -356,6 +407,7 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
 
   // notice text
   useEffect(() => {
+    if (!hasEnteredSection) return
     const target = getNoticeTarget(currentStep)
     if (target === '') {
       // No sentence defined for this step — leave whatever's currently
@@ -374,7 +426,7 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
       setNoticeText(target.slice(0, i))
       if (i >= target.length) clearInterval(noticeIntervalRef.current!)
     }, 22)
-  }, [currentStep])
+  }, [currentStep, hasEnteredSection])
 
   // main graph effect
   useEffect(() => {
@@ -659,6 +711,25 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
     )
   }
 
+  // Gates NodeStats' entrance typing: true once step 0's own notice text
+  // ("This is what a high school with high levels of course tracking...")
+  // has finished typing, or trivially true on any step without a notice
+  // sentence at all, so stats can still start normally in that case.
+  const step0NoticeDone = getNoticeTarget(currentStep) === '' || noticeText.length >= getNoticeTarget(currentStep).length
+
+  // Click-to-skip for whatever's currently typing: the current step's
+  // notice sentence, and NodeStats' own entrance sequence (via
+  // skipTypingSignal, consumed as its skipSignal prop). Safe to call even
+  // when nothing is actively typing.
+  const skipTyping = () => {
+    const target = getNoticeTarget(currentStep)
+    if (target !== '' && noticeText.length < target.length) {
+      clearInterval(noticeIntervalRef.current!)
+      setNoticeText(target)
+    }
+    setSkipTypingSignal(s => s + 1)
+  }
+
   return (
     <div id="graph-912" style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative', flexShrink: 0, width: '100%', marginTop: isMobile ? '2vh' : 0 }}>
       <div
@@ -677,35 +748,43 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
       >
 
         {/* left panel */}
-        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'flex-start', padding: isMobile ? '2.75rem 1.5rem 0.5rem 1.5rem' : '7.5rem 2rem 3rem 3rem', flexShrink: 0, gap: '1.5rem', position: 'relative' }}>
+        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'flex-start', padding: isMobile ? '1.25rem 1.5rem 0.2rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative' }}>
+          {/* Desktop: full 1in top margin (the wrapper's own 6rem padding
+              above). Notice text and the title keep the same (flexible,
+              equal) gaps between them as before; the three stat pieces
+              (breakdown, baseline, isolation) are now grouped tightly
+              together right under the title instead of also being spread
+              out. */}
           {!isMobile && (
-            <div style={{ height: '9rem', display: 'flex', alignItems: 'flex-start', position: 'absolute', top: '7.5rem', left: '3rem', right: '2rem', overflow: 'visible' }}>
-              {noticeText && (
-                <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
-                  {renderNoticeContent()}
-                </p>
-              )}
-            </div>
-          )}
-          {/* Label + dots + NodeStats: bottom-anchored as their own group,
-              fully decoupled from the notice text above. */}
-          {!isMobile && (
-            <div style={{ position: 'absolute', top: '28rem', left: '3rem', right: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <AnimatePresence mode="wait">
-                <motion.p key={currentStep}
-                  initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.4 }}
-                  style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}
-                >
-                  {STEPS[currentStep].label}
-                </motion.p>
-              </AnimatePresence>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                {STEPS.map((_, i) => (
-                  <div key={i} style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />
-                ))}
+            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ height: '9rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
+                {noticeText && (
+                  <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                    {renderNoticeContent()}
+                  </p>
+                )}
               </div>
-              <NodeStats nodes={fullPopulationRef.current} mode={mode} visible={true} mobile={false} />
+              <div style={{ flex: 1 }} />
+              <div>
+                <AnimatePresence mode="wait">
+                  <motion.p key={currentStep}
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.4 }}
+                    style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}
+                  >
+                    {STEPS[currentStep].label}
+                  </motion.p>
+                </AnimatePresence>
+                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.6rem' }}>
+                  {STEPS.map((_, i) => (
+                    <div key={i} style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />
+                  ))}
+                </div>
+              </div>
+              <div style={{ flex: 1 }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2.25rem' }}>
+                <NodeStats nodes={fullPopulationRef.current} edges={activeEdgesRef.current} mode={mode} visible={true} mobile={false} startTyping={step0NoticeDone} skipSignal={skipTypingSignal} />
+              </div>
             </div>
           )}
           {isMobile && (
@@ -725,6 +804,21 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
         <div
           ref={graphPanelRef}
           onClick={(e) => {
+            // Skip whichever notice/stats typing is currently running —
+            // also works on desktop, where clicks otherwise fall through
+            // to nothing until the isMobile check below.
+            const target0 = getNoticeTarget(currentStep)
+            const isNoticeTyping = target0 !== '' && noticeText.length < target0.length
+            if (isNoticeTyping) {
+              skipTyping()
+              return
+            }
+            // Notice text (if any) is already done, but NodeStats' own
+            // entrance sequence might still be typing — bump its skip
+            // signal too (a harmless no-op if it's already finished)
+            // without consuming the click, so normal tap/navigation below
+            // still runs in the same gesture.
+            setSkipTypingSignal(s => s + 1)
             if (!isMobile) return
             const target = e.target as Element
             if (target.tagName === 'circle' || target.tagName === 'image') {
@@ -794,7 +888,7 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
                   Tap to go forward →
                 </div>
               )}
-              <NodeStats nodes={fullPopulationRef.current} mode={mode} visible={true} mobile={true} />
+              <NodeStats nodes={fullPopulationRef.current} edges={activeEdgesRef.current} mode={mode} visible={true} mobile={true} startTyping={step0NoticeDone} skipSignal={skipTypingSignal} />
               <div style={{ position: 'absolute', bottom: '0.8rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.4rem' }}>
                 {STEPS.map((_, i) => (
                   <div key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />

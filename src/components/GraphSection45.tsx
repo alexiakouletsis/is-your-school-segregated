@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from 'react'
 import * as d3 from 'd3'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGraphSection } from '../hooks/useGraphSection'
-import NodeStats from './NodeStats'
 import type { Mode } from '../App'
 import type { Node, Edge, GraphData } from './graphTypes'
 import {
@@ -261,7 +260,7 @@ export default function GraphSection45({ mode, initialNodes, grade3Version, rese
       <div ref={sectionRef} style={{ position: isMobile ? 'relative' : 'sticky', top: 0, width: '100%', height: isMobile ? '100svh' : '100vh', backgroundColor: 'var(--color-bg)', display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: 'hidden' }}>
 
         {/* left panel */}
-        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'center', padding: isMobile ? '2.75rem 1.5rem 0.5rem 1.5rem' : '3rem 2rem 3rem 3rem', flexShrink: 0, gap: '1.5rem' }}>
+        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'center', padding: isMobile ? '1.25rem 1.5rem 0.2rem 1.5rem' : '3rem 2rem 3rem 3rem', flexShrink: 0, gap: '1.5rem' }}>
           {!isMobile && noticeText && (
             <p style={{ position: 'absolute', top: '6rem', left: '3rem', right: '2rem', fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
               {noticeText}
@@ -280,9 +279,6 @@ export default function GraphSection45({ mode, initialNodes, grade3Version, rese
                 <div key={i} style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />
               ))}
             </div>
-          )}
-          {!isMobile && (
-            <NodeStats nodes={activeNodesRef.current} mode={mode} visible={true} mobile={false} />
           )}
         </div>
 
@@ -367,7 +363,6 @@ export default function GraphSection45({ mode, initialNodes, grade3Version, rese
                   Tap to go forward →
                 </div>
               )}
-              <NodeStats nodes={activeNodesRef.current} mode={mode} visible={true} mobile={true} />
               <div style={{ position: 'absolute', bottom: '0.8rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.4rem' }}>
                 {STEPS.map((_, i) => (
                   <div key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />

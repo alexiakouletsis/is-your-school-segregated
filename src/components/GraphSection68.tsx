@@ -36,7 +36,7 @@ const TRACKING_LOW_TEXT = "This is what a middle school with minimal course trac
 // instead of retyping, since the prefix is already sitting there.
 const ALT_TEXT_PREFIX = "And this is what "
 const ALT_TEXT_SUFFIX: Record<number, string> = {
-  2: "6th grade looks like at a different public middle school. Students are funneled into specific pathways as young as 11 or 12 years old.",
+  2: "6th grade looks like at a different public middle school. Students are funneled into pathways as young as 11 or 12 years old.",
   3: "7th grade looks like at that public middle school.",
   4: "8th grade looks like at that public middle school.",
 }
@@ -162,6 +162,12 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
 
   const altFullPopulationRef = useRef<Node[]>([])
 
+  // Bumped on click to skip whatever typing animation is currently running
+  // — the step-1/alt notice text (handled directly in the click handler
+  // below) and NodeStats' own entrance sequence (which watches this via its
+  // skipSignal prop). Harmless to bump even when nothing is typing.
+  const [skipTypingSignal, setSkipTypingSignal] = useState(0)
+
   useEffect(() => { dialogueDoneRef.current = dialogueDone }, [dialogueDone])
 
   // Guards against scrolling straight past an alt-school step before its
@@ -273,11 +279,26 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       // Desktop stays pinned via position:sticky for a long scroll range
       // once stuck, so the narrow band check has plenty of time to catch a
       // scroll event and works fine as-is.
+      //
+      // This threshold MUST be >= useGraphSection's own wheel-block band
+      // (rect.top within ±50 — see the `if (rect.top > 50 || rect.top <
+      // -50) return` guard in useGraphSection.ts's handleWheel). That
+      // handler starts preventing forward wheel scroll as soon as
+      // blockScrollForward() is true, which it is immediately on entering
+      // step 0 (dialogueDone starts false) — if this trigger band were
+      // narrower than the block band (it previously was: ±10), a slow
+      // scroll could get its forward wheel input blocked while still
+      // sitting between ±50 and ±10, never actually reaching the ±10 zone
+      // needed to fire play() and set dialogueDone. That's a deadlock: can't
+      // scroll forward (blocked), and the one thing that would unblock it
+      // (the dialogue finishing) never starts. Matching the two bands
+      // closes that gap — the moment the block could possibly engage, the
+      // dialogue has already been triggered.
       const tryPlay = () => {
         if (hasPlayedDialogue.current) return
         if (!sectionRef.current) return
         const rect = sectionRef.current.getBoundingClientRect()
-        if (rect.top <= 10 && rect.top >= -10) {
+        if (rect.top <= 50 && rect.top >= -50) {
           window.removeEventListener('scroll', tryPlay)
           play()
         }
@@ -649,8 +670,44 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
     setDialogueDone(true)
   }
 
+  // Click-to-skip for whatever's currently typing: step 1's standalone
+  // notice, steps 2-4's alt-school sentence (only actually typing the
+  // first time that group is entered), and NodeStats' own entrance
+  // sequence (via skipTypingSignal, consumed as its skipSignal prop).
+  // Safe to call even when nothing is actively typing.
+  const skipTyping = () => {
+    if (currentStep === 1 && noticeText.length < TRACKING_LOW_TEXT.length) {
+      clearInterval(noticeIntervalRef.current!)
+      setNoticeText(TRACKING_LOW_TEXT)
+    }
+    if (currentStep >= 2 && !altTypingDone) {
+      clearInterval(altIntervalRef.current!)
+      setAltTypedText(ALT_TEXT_PREFIX + ALT_TEXT_SUFFIX[2])
+      setAltTypingDone(true)
+    }
+    setSkipTypingSignal(s => s + 1)
+  }
+
   const bubbleColorHigh = mode === 'race' ? '#FF954D' : '#F17091'
   const bubbleColorLow = mode === 'race' ? '#6897FF' : '#00B178'
+
+  // Gates NodeStats' entrance typing: true once step 1's own notice text
+  // ("This is what a middle school...") has finished typing, or trivially
+  // true if we're not even on step 1 (e.g. arrived via nav-bar jump) so
+  // stats can still start normally in that case.
+  const step1NoticeDone = !(currentStep === 1 && noticeText.length < TRACKING_LOW_TEXT.length)
+
+  // altFullPopulationRef is only populated inside the main graph-building
+  // effect, which runs AFTER the render that first flips currentStep to 2
+  // — so on that very first entry into the alt group, this ref is still
+  // empty for one render. Without this fallback, NodeStats would briefly
+  // see zero nodes and return null (the "flash" of stats vanishing then
+  // reappearing) until some later state update forces a re-render with the
+  // now-populated ref. Falling back to the previous step's data for that
+  // one render keeps something coherent on screen instead of blanking.
+  const statsNodes = currentStep >= 2
+    ? (altFullPopulationRef.current.length > 0 ? altFullPopulationRef.current : activeNodesRef.current)
+    : activeNodesRef.current
 
   const bubbleStyle = (isRight: boolean, color: string) => ({
     backgroundColor: 'white',
@@ -692,37 +749,43 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       >
 
         {/* left panel */}
-        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'flex-start', padding: isMobile ? '2.75rem 1.5rem 0.5rem 1.5rem' : '7.5rem 2rem 3rem 3rem', flexShrink: 0, gap: '1.5rem', position: 'relative' }}>
+        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'flex-start', padding: isMobile ? '1.25rem 1.5rem 0.2rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative' }}>
+          {/* Desktop: full 1in top margin (the wrapper's own 6rem padding
+              above). Notice text and the title keep the same (flexible,
+              equal) gaps between them as before; the three stat pieces
+              (breakdown, baseline, isolation) are now grouped tightly
+              together right under the title instead of also being spread
+              out. */}
           {!isMobile && (
-            <div style={{ height: '9rem', display: 'flex', alignItems: 'flex-start', position: 'absolute', top: '7.5rem', left: '3rem', right: '2rem', overflow: 'visible' }}>
-              {(currentStep === 1 ? noticeText : altTypedText || altTypingDone) && (
-                <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
-                  {renderNoticeContent()}
-                </p>
-              )}
-            </div>
-          )}
-          {/* Label + dots + NodeStats: bottom-anchored as their own group,
-              fully decoupled from the notice text above — this is a fixed
-              position regardless of how long that text is, rather than
-              flowing after it. */}
-          {!isMobile && (
-            <div style={{ position: 'absolute', top: '28rem', left: '3rem', right: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <AnimatePresence mode="wait">
-                <motion.p key={currentStep}
-                  initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.4 }}
-                  style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}
-                >
-                  {STEPS[currentStep].label}
-                </motion.p>
-              </AnimatePresence>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                {STEPS.map((_, i) => (
-                  <div key={i} style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />
-                ))}
+            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ height: '9rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
+                {(currentStep === 1 ? noticeText : altTypedText || altTypingDone) && (
+                  <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                    {renderNoticeContent()}
+                  </p>
+                )}
               </div>
-              <NodeStats nodes={currentStep >= 2 ? altFullPopulationRef.current : activeNodesRef.current} mode={mode} visible={currentStep >= 1} mobile={false} />
+              <div style={{ flex: 1 }} />
+              <div>
+                <AnimatePresence mode="wait">
+                  <motion.p key={currentStep}
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.4 }}
+                    style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}
+                  >
+                    {STEPS[currentStep].label}
+                  </motion.p>
+                </AnimatePresence>
+                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.6rem' }}>
+                  {STEPS.map((_, i) => (
+                    <div key={i} style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />
+                  ))}
+                </div>
+              </div>
+              <div style={{ flex: 1 }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2.25rem' }}>
+                <NodeStats nodes={statsNodes} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={false} startTyping={step1NoticeDone} skipSignal={skipTypingSignal} />
+              </div>
             </div>
           )}
           {isMobile && (
@@ -747,6 +810,21 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
               skipDialogue()
               return
             }
+            // Skip whichever notice/stats typing is currently running —
+            // also works on desktop, where clicks otherwise fall through
+            // to nothing until the isMobile check below.
+            const isNoticeTyping = currentStep === 1 && noticeText.length < TRACKING_LOW_TEXT.length
+            const isAltTyping = currentStep >= 2 && !altTypingDone
+            if (isNoticeTyping || isAltTyping) {
+              skipTyping()
+              return
+            }
+            // Notice/alt text (if any) is already done, but NodeStats'
+            // own entrance sequence might still be typing — bump its skip
+            // signal too (a harmless no-op if it's already finished)
+            // without consuming the click, so normal tap/navigation below
+            // still runs in the same gesture.
+            if (currentStep >= 1) setSkipTypingSignal(s => s + 1)
             if (!isMobile) return
             const target = e.target as Element
             if (target.tagName === 'circle' || target.tagName === 'image') {
@@ -858,7 +936,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
                   Tap to go forward →
                 </div>
               )}
-              <NodeStats nodes={currentStep >= 2 ? altFullPopulationRef.current : activeNodesRef.current} mode={mode} visible={currentStep >= 1} mobile={true} />
+              <NodeStats nodes={statsNodes} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={true} startTyping={step1NoticeDone} skipSignal={skipTypingSignal} />
               <div style={{ position: 'absolute', bottom: '0.8rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.4rem' }}>
                 {STEPS.map((_, i) => (
                   <div key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />

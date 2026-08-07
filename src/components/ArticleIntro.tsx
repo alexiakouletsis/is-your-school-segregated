@@ -9,13 +9,13 @@ const MIDDLE = "However, the data illustrates a different story."
 
 const PARA3_BEFORE = "The "
 const PARA3_LINK = "Plural Connections Group"
-const PARA3_AFTER_1 = " has partnered with Winston-Salem/Forsyth County Schools to collect data on 75 schools (varying from grades k-12) about classes that students share with one another. Classes can not only affect a student's academic breadth, but also the extent of their friendship networks. Let's take a look at this data in the context of "
+const PARA3_AFTER_1 = " has partnered with a public school district in the Southeastern United States to collect data on 75 schools (varying from grades k-12) about classes that students share with one another. Classes can not only affect a student's academic breadth, but also the extent of their friendship networks. Let's take a look at this data in the context of "
 
 const PARA3_BOLD_PINK_SES = "Socio-Economic "
 const PARA3_BOLD_GREEN_SES = "Status (SES) line"
 const PARA3_FULL_SES = PARA3_BEFORE + PARA3_LINK + PARA3_AFTER_1 + PARA3_BOLD_PINK_SES + PARA3_BOLD_GREEN_SES + "."
 
-const PARA3_AFTER_1_RACE = " has partnered with Winston-Salem/Forsyth County Schools to collect data on 75 schools (varying from grades k-12) about classes that students share with one another. Classes can not only affect a student's academic breadth, but also the extent of their friendship networks. Let's take a look at this data in the context of race."
+const PARA3_AFTER_1_RACE = " has partnered with a public school district in the Southeastern United States to collect data on 75 schools (varying from grades k-12) about classes that students share with one another. Classes can not only affect a student's academic breadth, but also the extent of their friendship networks. Let's take a look at this data in the context of race."
 const PARA3_FULL_RACE = PARA3_BEFORE + PARA3_LINK + PARA3_AFTER_1_RACE
 
 interface Props {

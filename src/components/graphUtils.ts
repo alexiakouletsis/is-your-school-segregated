@@ -33,6 +33,89 @@ export const getEdgeColor = (d: Edge, mode: Mode): string => {
   return getNodeColor(source, mode)
 }
 
+// For each low-group student (below SES line / student of color), look at
+// their own edges and work out what fraction of THEIR neighbors are
+// high-group (above SES line / white-asian) — then average that per-student
+// ratio across all low-group students. Per-student average (every student
+// counts equally regardless of degree), not a pooled edge count. This is
+// the "actual" half of the random-mixing comparison rendered in NodeStats —
+// the "expected if classes were random" half is just the population's own
+// high-group share, which NodeStats already computes for the "Of this
+// given network" breakdown, so it doesn't need its own helper here.
+// Low-group students with zero qualifying edges are excluded (an undefined
+// ratio, not a 0%) — same reasoning as computeLowGroupFullIsolationPct
+// below, just applied to averaging instead of a threshold.
+export const computeLowGroupAvgHighNeighborPct = (nodes: Node[], edges: Edge[], mode: Mode): number => {
+  const hasGroup = (n: Node) => !!(n.ses || n.race_ethnicity)
+  const isHigh = (n: Node) => mode === 'race' ? n.race_ethnicity === 'white_asian' : n.ses === 'higher'
+  const byId = new Map(nodes.map(n => [n.id, n]))
+  const idOf = (end: number | Node): number => (typeof end === 'object' ? end.id : end)
+
+  const neighborsOf = new Map<number, number[]>()
+  edges.forEach(e => {
+    const srcId = idOf(e.source)
+    const tgtId = idOf(e.target)
+    const srcNode = byId.get(srcId)
+    const tgtNode = byId.get(tgtId)
+    if (!srcNode || !tgtNode || !hasGroup(srcNode) || !hasGroup(tgtNode)) return
+    if (!neighborsOf.has(srcId)) neighborsOf.set(srcId, [])
+    if (!neighborsOf.has(tgtId)) neighborsOf.set(tgtId, [])
+    neighborsOf.get(srcId)!.push(tgtId)
+    neighborsOf.get(tgtId)!.push(srcId)
+  })
+
+  const lowNodes = nodes.filter(n => hasGroup(n) && !isHigh(n))
+  let sumHighRatio = 0, counted = 0
+
+  lowNodes.forEach(n => {
+    const neighborIds = neighborsOf.get(n.id)
+    if (!neighborIds || neighborIds.length === 0) return
+    const highNeighborCount = neighborIds.filter(nid => {
+      const neighbor = byId.get(nid)
+      return neighbor && isHigh(neighbor)
+    }).length
+    sumHighRatio += highNeighborCount / neighborIds.length
+    counted++
+  })
+
+  if (counted === 0) return 0
+  return Math.round((sumHighRatio / counted) * 100)
+}
+
+// Of all low-group students, what fraction share ZERO classes with any
+// high-group student — i.e. every one of their edges (if they have any at
+// all) stays within their own group. Deliberately includes students with no
+// edges at all (they trivially share zero classes with anyone, high-group
+// included) — unlike the averaging helper above, there's no "undefined
+// ratio" here to exclude; a student with no cross-group contact is exactly
+// what this is measuring, degree zero or not.
+export const computeLowGroupFullIsolationPct = (nodes: Node[], edges: Edge[], mode: Mode): number => {
+  const hasGroup = (n: Node) => !!(n.ses || n.race_ethnicity)
+  const isHigh = (n: Node) => mode === 'race' ? n.race_ethnicity === 'white_asian' : n.ses === 'higher'
+  const byId = new Map(nodes.map(n => [n.id, n]))
+  const idOf = (end: number | Node): number => (typeof end === 'object' ? end.id : end)
+
+  const lowNodes = nodes.filter(n => hasGroup(n) && !isHigh(n))
+  if (lowNodes.length === 0) return 0
+
+  const hasHighNeighbor = new Set<number>()
+  edges.forEach(e => {
+    const srcId = idOf(e.source)
+    const tgtId = idOf(e.target)
+    const srcNode = byId.get(srcId)
+    const tgtNode = byId.get(tgtId)
+    if (!srcNode || !tgtNode || !hasGroup(srcNode) || !hasGroup(tgtNode)) return
+    const srcHigh = isHigh(srcNode)
+    const tgtHigh = isHigh(tgtNode)
+    if (srcHigh === tgtHigh) return // not a cross-group edge
+    if (!srcHigh) hasHighNeighbor.add(srcId)
+    if (!tgtHigh) hasHighNeighbor.add(tgtId)
+  })
+
+  const isolatedCount = lowNodes.filter(n => !hasHighNeighbor.has(n.id)).length
+  return Math.round((isolatedCount / lowNodes.length) * 100)
+}
+
 export const getTooltipLabel = (d: Node, mode: Mode): string => {
   if (d.id === PROTAGONIST_HIGH) return mode === 'race' ? 'White/Asian student' : 'Above median SES'
   if (d.id === getProtagonistLow(mode)) return mode === 'race' ? 'Student of color' : 'Below median SES'
