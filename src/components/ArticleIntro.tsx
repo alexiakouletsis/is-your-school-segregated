@@ -243,20 +243,28 @@ export default function ArticleIntro({ startTyping, onDone, onReset, onAdvance, 
         color: '#111',
         lineHeight: isMobile ? 1.95 : 2.15,
         cursor: 'default',
-        minHeight: isMobile ? '80vh' : 'auto',
       }}
     >
-      <span style={{
-        fontSize: isMobile ? 'clamp(0.75rem, 3.5vw, 0.95rem)' : 'clamp(1.1rem, 1.8vw, 1.4rem)',
-        display: 'block',
-        marginBottom: isMobile ? '1.2rem' : '2rem',
-        minHeight: isMobile ? '8em' : 'auto',
-      }}>
-        {para1Text}
-        {para1Text.length > 0 && para1Text.length < PARA1.length && (
-          <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-        )}
-      </span>
+      <div style={{ position: 'relative', width: '100%', marginBottom: isMobile ? '1.2rem' : '2rem' }}>
+        <span aria-hidden="true" style={{
+          fontSize: isMobile ? 'clamp(0.75rem, 3.5vw, 0.95rem)' : 'clamp(1.1rem, 1.8vw, 1.4rem)',
+          display: 'block',
+          visibility: 'hidden',
+        }}>
+          {PARA1}
+        </span>
+        <span style={{
+          fontSize: isMobile ? 'clamp(0.75rem, 3.5vw, 0.95rem)' : 'clamp(1.1rem, 1.8vw, 1.4rem)',
+          display: 'block',
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+        }}>
+          {para1Text}
+          {para1Text.length > 0 && para1Text.length < PARA1.length && (
+            <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
+          )}
+        </span>
+      </div>
 
       <motion.div
         initial={{ opacity: 0 }}
@@ -267,19 +275,28 @@ export default function ArticleIntro({ startTyping, onDone, onReset, onAdvance, 
           fontSize: isMobile ? 'clamp(1rem, 5vw, 1.3rem)' : 'clamp(1.5rem, 2.8vw, 2.1rem)',
           fontWeight: 700,
           marginBottom: isMobile ? '1.2rem' : '2rem',
-          minHeight: isMobile ? '2em' : 'auto',
         }}
       >
         {MIDDLE}
       </motion.div>
 
-      <span style={{
-        fontSize: isMobile ? 'clamp(0.75rem, 3.5vw, 0.95rem)' : 'clamp(1.1rem, 1.8vw, 1.4rem)',
-        display: 'block',
-        minHeight: isMobile ? '8em' : 'auto',
-      }}>
-        {renderPara3()}
-      </span>
+      <div style={{ position: 'relative', width: '100%' }}>
+        <span aria-hidden="true" style={{
+          fontSize: isMobile ? 'clamp(0.75rem, 3.5vw, 0.95rem)' : 'clamp(1.1rem, 1.8vw, 1.4rem)',
+          display: 'block',
+          visibility: 'hidden',
+        }}>
+          {PARA3_FULL}
+        </span>
+        <span style={{
+          fontSize: isMobile ? 'clamp(0.75rem, 3.5vw, 0.95rem)' : 'clamp(1.1rem, 1.8vw, 1.4rem)',
+          display: 'block',
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+        }}>
+          {renderPara3()}
+        </span>
+      </div>
 
       <motion.div
         initial={{ opacity: 0 }}

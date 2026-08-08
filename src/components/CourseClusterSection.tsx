@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { Mode } from '../App'
 import {
-  computeCourseStats, getRankedCourses, formatCourseName,
+  computeCourseStats, computeExpectedPct, getRankedCourses, formatCourseName,
   type CoursesRaw, type CourseStat,
 } from './courseUtils'
 
@@ -18,6 +18,9 @@ export default function CourseClusterSection({ mode }: Props) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   const [allStats, setAllStats] = useState<CourseStat[]>([])
+  // Computed once from the raw (unfiltered) fetch — both modes at once
+  // since mode can be toggled without re-fetching.
+  const [expectedPct, setExpectedPct] = useState<{ ses: number; race: number }>({ ses: 0, race: 0 })
   const [inView, setInView] = useState(false)
 
   const [paraText, setParaText] = useState('')
@@ -30,7 +33,13 @@ export default function CourseClusterSection({ mode }: Props) {
   useEffect(() => {
     fetch('/data/courses.json')
       .then(r => r.json())
-      .then((raw: CoursesRaw) => setAllStats(computeCourseStats(raw)))
+      .then((raw: CoursesRaw) => {
+        setAllStats(computeCourseStats(raw))
+        setExpectedPct({
+          ses: computeExpectedPct(raw, 'ses'),
+          race: computeExpectedPct(raw, 'race'),
+        })
+      })
   }, [])
 
   // Trigger typing + bar reveal once, the first time this section scrolls
@@ -160,13 +169,60 @@ export default function CourseClusterSection({ mode }: Props) {
       </motion.div>
 
       {/* ranked bar list */}
-      <div style={{
-        width: '100%',
-        maxWidth: '900px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: isMobile ? '0.55rem' : '0.5rem',
-      }}>
+      <div style={{ width: '100%', maxWidth: '900px', position: 'relative', marginTop: isMobile ? '1.6rem' : '1.8rem' }}>
+        {/* Reference line for "what the makeup would be if classes were
+            assigned at random" — computed from the exact same
+            courses.json data already driving the bars above (summed
+            across every course, not just the ones that clear
+            MIN_ENROLLMENT, since a genuine population baseline shouldn't
+            drop the smaller courses). The label sits permanently just
+            above the line rather than behind a hover/tap-to-reveal —
+            a reader scanning straight down the bars should get this
+            context for free instead of needing to discover an
+            interaction first. */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: paraDone ? 1 : 0 }}
+          transition={{ duration: 0.6 }}
+          style={{
+            position: 'absolute',
+            top: isMobile ? '-1.5rem' : '-1.7rem',
+            left: isMobile
+              ? `${expectedPct[mode]}%`
+              : `calc(230px + 0.9rem + (100% - 230px - 48px - 1.8rem) * ${expectedPct[mode] / 100})`,
+            transform: 'translateX(-50%)',
+            whiteSpace: 'nowrap',
+            fontFamily: "'Kiwi Maru', serif",
+            fontSize: isMobile ? 'clamp(0.6rem, 2.5vw, 0.7rem)' : 'clamp(0.65rem, 0.95vw, 0.78rem)',
+            fontStyle: 'italic',
+            color: '#555',
+            pointerEvents: 'none',
+          }}
+        >
+          Expected if random: {Math.round(expectedPct[mode])}%
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: paraDone ? 0.55 : 0 }}
+          transition={{ duration: 0.6 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: isMobile
+              ? `${expectedPct[mode]}%`
+              : `calc(230px + 0.9rem + (100% - 230px - 48px - 1.8rem) * ${expectedPct[mode] / 100})`,
+            borderLeft: '2px dashed #111',
+            pointerEvents: 'none',
+          }}
+        />
+
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: isMobile ? '0.55rem' : '0.5rem',
+        }}>
         {ranked.map((course, i) => {
           const pct = course[pctKey] as number
           return (
@@ -231,6 +287,7 @@ export default function CourseClusterSection({ mode }: Props) {
             </motion.div>
           )
         })}
+        </div>
       </div>
     </div>
   )

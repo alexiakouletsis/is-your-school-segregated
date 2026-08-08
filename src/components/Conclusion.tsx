@@ -118,6 +118,20 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
   const lastTransformRef = useRef<number[]>([])
   const hasExplodedRef = useRef(false)
   const RENDER_SCALE = isMobile ? 3 : 1
+  // Mobile only: instead of one DOM node per dot (up to 160 separate
+  // elements, each needing their own layout/paint/composite work every
+  // frame — the likely source of the reported jank even after this file's
+  // existing dirty-check/frame-skip tuning), draw every dot in a single
+  // canvas pass per update. Same underlying dot data and the same
+  // getConvergeProgress/getDotOpacity math drive both phases — this only
+  // changes HOW they're painted, not their positions, colors, or timing.
+  // The explosion burst needs its own short-lived RAF loop below since
+  // it's a one-shot timed animation (previously a CSS transition), not
+  // scroll-driven like convergence is. Desktop keeps the existing
+  // DOM-node + CSS-transition approach untouched.
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const explodeRafRef = useRef<number | null>(null)
+  const explodeStartRef = useRef<number | null>(null)
 
   // --- body content sequence: title -> paragraph -> toggle -> signature+info ---
   const [contentVisible, setContentVisible] = useState(false)
@@ -146,10 +160,23 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
 
   useEffect(() => {
     const measure = () => {
-      if (panelRef.current) {
-        const r = panelRef.current.getBoundingClientRect()
-        setPanelSize({ width: r.width, height: r.height })
-      }
+      if (!panelRef.current) return
+      const r = panelRef.current.getBoundingClientRect()
+      setPanelSize(prev => {
+        // Mobile browsers fire a 'resize' event whenever the address bar
+        // shows/hides during scroll, nudging window.innerHeight (and this
+        // panel's measured height) by a handful of px with no real layout
+        // change. Since the scroll-position effect below depends on
+        // panelSize, every one of those tiny changes was tearing down and
+        // rebuilding its scroll listener AND shifting the vh-based math it
+        // uses — visible as dots jumping position mid-transition. Ignoring
+        // sub-8px changes filters that noise out while still catching
+        // genuine resizes (rotation, real viewport/window changes).
+        if (Math.abs(r.width - prev.width) < 8 && Math.abs(r.height - prev.height) < 8) {
+          return prev
+        }
+        return { width: r.width, height: r.height }
+      })
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -160,6 +187,16 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
       window.removeEventListener('resize', measure)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isMobile || !canvasRef.current) return
+    const canvas = canvasRef.current
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = panelSize.width * dpr
+    canvas.height = panelSize.height * dpr
+    const ctx = canvas.getContext('2d')
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  }, [isMobile, panelSize])
 
   const resetContent = useCallback(() => {
     setContentVisible(false)
@@ -324,10 +361,20 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
       if (p < HOLD_END) {
         if (hasExplodedRef.current) {
           hasExplodedRef.current = false
-          dots.forEach((_, i) => {
-            const el = dotRefs.current[i]
-            if (el) el.style.transition = ''
-          })
+          if (isMobile) {
+            if (explodeRafRef.current !== null) {
+              cancelAnimationFrame(explodeRafRef.current)
+              explodeRafRef.current = null
+            }
+            explodeStartRef.current = null
+            const ctx = canvasRef.current?.getContext('2d')
+            if (ctx) ctx.clearRect(0, 0, vw, vh)
+          } else {
+            dots.forEach((_, i) => {
+              const el = dotRefs.current[i]
+              if (el) el.style.transition = ''
+            })
+          }
           // Scrolling back up past the trigger point needs to undo the
           // WHOLE forward sequence, not just the dots' own styles — the
           // title/paragraph/toggle/signature block was left sitting at
@@ -339,52 +386,113 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
           resetContent()
         }
 
-        dots.forEach((dot, i) => {
-          const el = dotRefs.current[i]
-          if (!el) return
-
-          const opacity = getDotOpacity(dot, p)
-          if (Math.abs(opacity - (lastOpacityRef.current[i] ?? -1)) > 0.004) {
-            el.style.opacity = String(opacity)
-            lastOpacityRef.current[i] = opacity
+        if (isMobile) {
+          const ctx = canvasRef.current?.getContext('2d')
+          if (ctx) {
+            ctx.clearRect(0, 0, vw, vh)
+            dots.forEach((dot, i) => {
+              const opacity = getDotOpacity(dot, p)
+              lastOpacityRef.current[i] = opacity
+              if (opacity <= 0.003) return
+              const basePxX = vw * (dot.baseX / 100)
+              const basePxY = vh * (dot.baseY / 100)
+              const convergePxX = centerPxX + dot.convergeOffsetX
+              const convergePxY = centerPxY + dot.convergeOffsetY
+              const convergeT = easeOutCubic(getConvergeProgress(dot, p))
+              const dx = (convergePxX - basePxX) * convergeT
+              const dy = (convergePxY - basePxY) * convergeT
+              ctx.globalAlpha = opacity
+              ctx.fillStyle = dotColors[i]
+              ctx.beginPath()
+              ctx.arc(basePxX + dx, basePxY + dy, dot.size / 2, 0, Math.PI * 2)
+              ctx.fill()
+            })
+            ctx.globalAlpha = 1
           }
+        } else {
+          dots.forEach((dot, i) => {
+            const el = dotRefs.current[i]
+            if (!el) return
 
-          const basePxX = vw * (dot.baseX / 100)
-          const basePxY = vh * (dot.baseY / 100)
-          const convergePxX = centerPxX + dot.convergeOffsetX
-          const convergePxY = centerPxY + dot.convergeOffsetY
-          const convergeT = easeOutCubic(getConvergeProgress(dot, p))
-          const dx = (convergePxX - basePxX) * convergeT
-          const dy = (convergePxY - basePxY) * convergeT
-          // Same dirty-check idea as opacity above, applied to transform:
-          // most dots aren't actively converging at any given instant
-          // (convergeDelay staggers them), so skipping the write once a
-          // dot has settled at its current dx/dy cuts real per-frame cost
-          // on mobile, where this continuous (not one-shot) phase was
-          // still the remaining source of lag.
-          const lastDx = lastTransformRef.current[i * 2]
-          const lastDy = lastTransformRef.current[i * 2 + 1]
-          if (Math.abs(dx - lastDx) > 0.15 || Math.abs(dy - lastDy) > 0.15) {
-            el.style.transform = `translate(${dx}px, ${dy}px) scale(${1 / RENDER_SCALE})`
-            lastTransformRef.current[i * 2] = dx
-            lastTransformRef.current[i * 2 + 1] = dy
-          }
-        })
+            const opacity = getDotOpacity(dot, p)
+            if (Math.abs(opacity - (lastOpacityRef.current[i] ?? -1)) > 0.004) {
+              el.style.opacity = String(opacity)
+              lastOpacityRef.current[i] = opacity
+            }
+
+            const basePxX = vw * (dot.baseX / 100)
+            const basePxY = vh * (dot.baseY / 100)
+            const convergePxX = centerPxX + dot.convergeOffsetX
+            const convergePxY = centerPxY + dot.convergeOffsetY
+            const convergeT = easeOutCubic(getConvergeProgress(dot, p))
+            const dx = (convergePxX - basePxX) * convergeT
+            const dy = (convergePxY - basePxY) * convergeT
+            // Same dirty-check idea as opacity above, applied to transform:
+            // most dots aren't actively converging at any given instant
+            // (convergeDelay staggers them), so skipping the write once a
+            // dot has settled at its current dx/dy cuts real per-frame cost
+            // on mobile, where this continuous (not one-shot) phase was
+            // still the remaining source of lag.
+            const lastDx = lastTransformRef.current[i * 2]
+            const lastDy = lastTransformRef.current[i * 2 + 1]
+            if (Math.abs(dx - lastDx) > 0.15 || Math.abs(dy - lastDy) > 0.15) {
+              el.style.transform = `translate(${dx}px, ${dy}px) scale(${1 / RENDER_SCALE})`
+              lastTransformRef.current[i * 2] = dx
+              lastTransformRef.current[i * 2 + 1] = dy
+            }
+          })
+        }
       } else if (!hasExplodedRef.current) {
         hasExplodedRef.current = true
-        dots.forEach((dot, i) => {
-          const el = dotRefs.current[i]
-          if (!el) return
-          const basePxX = vw * (dot.baseX / 100)
-          const basePxY = vh * (dot.baseY / 100)
-          const explodePxX = vw * (dot.explodeX / 100)
-          const explodePxY = vh * (dot.explodeY / 100)
-          el.style.willChange = 'transform, opacity'
-          el.style.transition = `transform ${BURST_MS}ms cubic-bezier(0.16, 1, 0.3, 1), opacity ${BURST_MS}ms ease-out`
-          el.style.transform = `translate(${explodePxX - basePxX}px, ${explodePxY - basePxY}px) scale(${dot.explodeScale / RENDER_SCALE})`
-          el.style.opacity = '0'
-          lastOpacityRef.current[i] = 0
-        })
+        if (isMobile) {
+          // One-shot timed burst, driven by its own short-lived RAF loop
+          // (previously a CSS transition — canvas has no equivalent, so
+          // this reimplements the same eased position/opacity/scale curve
+          // by hand over the same BURST_MS window).
+          explodeStartRef.current = performance.now()
+          const drawExplodeFrame = () => {
+            const ctx = canvasRef.current?.getContext('2d')
+            if (!ctx || explodeStartRef.current === null) return
+            const elapsed = performance.now() - explodeStartRef.current
+            const t = Math.min(1, elapsed / BURST_MS)
+            const eased = easeOutCubic(t)
+            ctx.clearRect(0, 0, vw, vh)
+            dots.forEach((dot, i) => {
+              const basePxX = vw * (dot.baseX / 100)
+              const basePxY = vh * (dot.baseY / 100)
+              const explodePxX = vw * (dot.explodeX / 100)
+              const explodePxY = vh * (dot.explodeY / 100)
+              const dx = (explodePxX - basePxX) * eased
+              const dy = (explodePxY - basePxY) * eased
+              const scale = 1 + (dot.explodeScale - 1) * eased
+              const opacity = 1 - eased
+              lastOpacityRef.current[i] = opacity
+              if (opacity <= 0.003) return
+              ctx.globalAlpha = opacity
+              ctx.fillStyle = dotColors[i]
+              ctx.beginPath()
+              ctx.arc(basePxX + dx, basePxY + dy, (dot.size / 2) * scale, 0, Math.PI * 2)
+              ctx.fill()
+            })
+            ctx.globalAlpha = 1
+            explodeRafRef.current = t < 1 ? requestAnimationFrame(drawExplodeFrame) : null
+          }
+          drawExplodeFrame()
+        } else {
+          dots.forEach((dot, i) => {
+            const el = dotRefs.current[i]
+            if (!el) return
+            const basePxX = vw * (dot.baseX / 100)
+            const basePxY = vh * (dot.baseY / 100)
+            const explodePxX = vw * (dot.explodeX / 100)
+            const explodePxY = vh * (dot.explodeY / 100)
+            el.style.willChange = 'transform, opacity'
+            el.style.transition = `transform ${BURST_MS}ms cubic-bezier(0.16, 1, 0.3, 1), opacity ${BURST_MS}ms ease-out`
+            el.style.transform = `translate(${explodePxX - basePxX}px, ${explodePxY - basePxY}px) scale(${dot.explodeScale / RENDER_SCALE})`
+            el.style.opacity = '0'
+            lastOpacityRef.current[i] = 0
+          })
+        }
         // This is the single trigger for the whole rest of the sequence —
         // lock scroll (desktop only actually enforces it, see the effect
         // above) right where the user is, then fade in the body content
@@ -419,9 +527,14 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
     return () => {
       window.removeEventListener('scroll', handleScroll)
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+      if (explodeRafRef.current !== null) cancelAnimationFrame(explodeRafRef.current)
       if (contentTimeoutRef.current) clearTimeout(contentTimeoutRef.current)
     }
-  }, [dots, panelSize])
+    // dotColors included so a mode toggle (which regenerates it in a
+    // separate effect) forces this effect to re-run and immediately
+    // redraw with the new colors via the update() call below — see the
+    // identical comment in Section02.tsx for the full explanation.
+  }, [dots, panelSize, dotColors])
 
   const highColor = mode === 'race' ? 'var(--color-race-1)' : 'var(--color-high-ses)'
   const lowColor = mode === 'race' ? 'var(--color-race-2)' : 'var(--color-low-ses)'
@@ -504,41 +617,53 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
         backgroundColor: 'transparent',
         ...(isMobile ? { overflowAnchor: 'none' as const, willChange: 'transform' } : {}),
       }}>
-        {dots.map((dot, i) => {
-          const renderSize = dot.size * RENDER_SCALE
-          return (
-            <div
-              key={dot.id}
-              ref={(el) => { dotRefs.current[i] = el }}
-              style={{
-                position: 'absolute',
-                left: `${dot.baseX}%`,
-                top: `${dot.baseY}%`,
-                width: 0,
-                height: 0,
-                opacity: 0,
-                zIndex: 2,
-                pointerEvents: 'none',
-                ...(isMobile ? {} : { willChange: 'transform, opacity' }),
-              }}
-            >
-              <div style={{
-                position: 'absolute',
-                left: -renderSize / 2,
-                top: -renderSize / 2,
-                width: renderSize,
-                height: renderSize,
-                borderRadius: '50%',
-                backgroundColor: dotColors[i],
-                ...(isMobile ? {} : {
+        {isMobile ? (
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              zIndex: 2,
+              pointerEvents: 'none',
+            }}
+          />
+        ) : (
+          dots.map((dot, i) => {
+            const renderSize = dot.size * RENDER_SCALE
+            return (
+              <div
+                key={dot.id}
+                ref={(el) => { dotRefs.current[i] = el }}
+                style={{
+                  position: 'absolute',
+                  left: `${dot.baseX}%`,
+                  top: `${dot.baseY}%`,
+                  width: 0,
+                  height: 0,
+                  opacity: 0,
+                  zIndex: 2,
+                  pointerEvents: 'none',
+                  willChange: 'transform, opacity',
+                }}
+              >
+                <div style={{
+                  position: 'absolute',
+                  left: -renderSize / 2,
+                  top: -renderSize / 2,
+                  width: renderSize,
+                  height: renderSize,
+                  borderRadius: '50%',
+                  backgroundColor: dotColors[i],
                   animation: `dotFloatBob ${dot.bobDuration}s ease-in-out infinite`,
                   animationDelay: `${dot.bobDelay}s`,
-                }),
-                ['--dot-bob-amount' as string]: `${-dot.bobAmount}px`,
-              }} />
-            </div>
-          )
-        })}
+                  ['--dot-bob-amount' as string]: `${-dot.bobAmount}px`,
+                }} />
+              </div>
+            )
+          })
+        )}
 
         {/* body content — fades in right where the dots just cleared,
             no additional scrolling required */}

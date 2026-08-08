@@ -50,6 +50,27 @@ export function formatCourseName(raw: string): string {
     .join(' ')
 }
 
+// "If course rosters were filled by randomly assigning students to
+// classes (each student still taking however many classes they actually
+// take), what would any given course's makeup land on?" — the
+// enrollment-weighted composition across EVERY course in the raw data,
+// not just the ones that clear MIN_ENROLLMENT for display. A genuine
+// population baseline shouldn't drop the smaller courses just because
+// they're too small to plot individually — their students still count
+// toward "what the overall mix looks like." This is computed directly
+// from the same courses.json this component already fetches, so it stays
+// in sync with whatever schools that file was built from — no separate
+// data source needed.
+export function computeExpectedPct(raw: CoursesRaw, mode: Mode): number {
+  let sumGroup = 0
+  let sumTotal = 0
+  for (const c of Object.values(raw)) {
+    sumGroup += mode === 'race' ? c.white_asian : c.higher
+    sumTotal += c.total
+  }
+  return sumTotal === 0 ? 0 : (sumGroup / sumTotal) * 100
+}
+
 export function computeCourseStats(raw: CoursesRaw): CourseStat[] {
   return Object.entries(raw)
     .filter(([, c]) => c.total >= MIN_ENROLLMENT)

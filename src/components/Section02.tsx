@@ -67,6 +67,16 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
   const [textOpacity, setTextOpacity] = useState(0)
   const progressRef = useRef(0)
   const dotRefs = useRef<(HTMLDivElement | null)[]>([])
+  // Mobile only: instead of one DOM node per dot (up to 240 separate
+  // elements each needing their own layout/paint/composite work every
+  // frame — the likely source of the reported jank, even after the
+  // dirty-check/frame-skip/reduced-count tuning below), draw every dot
+  // in a single canvas pass per update. Same underlying dot data and the
+  // same getDotOpacity math drive both — this only changes HOW they're
+  // painted, not their positions, colors, or fade timing. Desktop keeps
+  // the existing DOM-node approach untouched.
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasSizeRef = useRef({ width: 0, height: 0 })
   // Tracks each dot's last-written opacity so the scroll handler below can
   // skip the DOM write entirely once a dot has settled at a stable value
   // (fully 0 before its reveal / after its fade, or fully 1 mid-hold) —
@@ -74,6 +84,28 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
   // of the scroll range at any given moment, so this is what actually lets
   // the dot count go back up without a proportional per-frame cost.
   const lastOpacityRef = useRef<number[]>([])
+
+  useEffect(() => {
+    if (!isMobile) return
+    const measure = () => {
+      if (!canvasRef.current) return
+      const rect = canvasRef.current.getBoundingClientRect()
+      canvasSizeRef.current = { width: rect.width, height: rect.height }
+      const dpr = window.devicePixelRatio || 1
+      canvasRef.current.width = rect.width * dpr
+      canvasRef.current.height = rect.height * dpr
+      const ctx = canvasRef.current.getContext('2d')
+      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    if (canvasRef.current) observer.observe(canvasRef.current)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [isMobile])
 
   useEffect(() => {
     // Mobile count restored now that the dirty-check above (and bob being
@@ -132,20 +164,40 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
       ))
       progressRef.current = p
       setTextOpacity(getTextOpacity(p))
-      dots.forEach((dot, i) => {
-        const el = dotRefs.current[i]
-        if (!el) return
-        const opacity = getDotOpacity(dot, p)
-        // Skip the DOM write entirely if this dot's opacity hasn't
-        // meaningfully moved since last frame — see the comment on
-        // lastOpacityRef above for why this is what actually makes a
-        // higher dot count affordable.
-        if (Math.abs(opacity - (lastOpacityRef.current[i] ?? -1)) > 0.004) {
-          el.style.opacity = String(opacity)
-          lastOpacityRef.current[i] = opacity
-          if (!isMobile) el.style.animationPlayState = opacity > 0.01 ? 'running' : 'paused'
+
+      if (isMobile) {
+        const ctx = canvasRef.current?.getContext('2d')
+        if (ctx) {
+          const { width: cw, height: ch } = canvasSizeRef.current
+          ctx.clearRect(0, 0, cw, ch)
+          dots.forEach((dot, i) => {
+            const opacity = getDotOpacity(dot, p)
+            lastOpacityRef.current[i] = opacity
+            if (opacity <= 0.003) return
+            ctx.globalAlpha = opacity
+            ctx.fillStyle = dotColors[i]
+            ctx.beginPath()
+            ctx.arc((dot.x / 100) * cw, (dot.y / 100) * ch, dot.size / 2, 0, Math.PI * 2)
+            ctx.fill()
+          })
+          ctx.globalAlpha = 1
         }
-      })
+      } else {
+        dots.forEach((dot, i) => {
+          const el = dotRefs.current[i]
+          if (!el) return
+          const opacity = getDotOpacity(dot, p)
+          // Skip the DOM write entirely if this dot's opacity hasn't
+          // meaningfully moved since last frame — see the comment on
+          // lastOpacityRef above for why this is what actually makes a
+          // higher dot count affordable.
+          if (Math.abs(opacity - (lastOpacityRef.current[i] ?? -1)) > 0.004) {
+            el.style.opacity = String(opacity)
+            lastOpacityRef.current[i] = opacity
+            el.style.animationPlayState = opacity > 0.01 ? 'running' : 'paused'
+          }
+        })
+      }
 
       // when dots are done fading, start typing + lock scroll
       if (p >= 0.9 && !typingStarted.current) {
@@ -168,7 +220,17 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
       window.removeEventListener('scroll', handleScroll)
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
     }
-  }, [dots, isMobile])
+    // dotColors included so a mode toggle (which regenerates it in a
+    // separate effect) forces this effect to re-run and immediately
+    // redraw with the new colors via the update() call below — without
+    // it, the canvas draw closure kept referencing whatever dotColors
+    // array was current the last time THIS effect ran, so a mode change
+    // wouldn't actually repaint until some later scroll event happened to
+    // fire (and even then, with the stale closure, not necessarily at
+    // all). The old DOM-based approach never had this problem since
+    // color was applied via a JSX prop that React re-renders on any state
+    // change, not through this imperative closure.
+  }, [dots, isMobile, dotColors])
 
   // scroll lock while typing (desktop only — mobile keeps scrolling freely,
   // with the typing animation just playing out in the background)
@@ -409,36 +471,42 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
         </div>
 
         {/* dot flood layer */}
-        {dots.map((dot, i) => (
-          <div
-            key={dot.id}
-            ref={(el) => { dotRefs.current[i] = el }}
+        {isMobile ? (
+          <canvas
+            ref={canvasRef}
             style={{
               position: 'absolute',
-              left: `${dot.x}%`,
-              top: `${dot.y}%`,
-              width: dot.size,
-              height: dot.size,
-              borderRadius: '50%',
-              backgroundColor: dotColors[i],
-              opacity: 0,
+              inset: 0,
+              width: '100%',
+              height: '100%',
               zIndex: 2,
               pointerEvents: 'none',
-              // Bob animation is desktop-only — each infinite keyframe
-              // animation likely gets promoted to its own compositor layer,
-              // and up to 300 of those running simultaneously is a very
-              // plausible source of mobile jank/heat. The dots still fade
-              // in/out and drive the scroll-linked reveal on mobile; they
-              // just stay still instead of continuously bobbing there.
-              ...(isMobile ? {} : {
-                animation: `dotFloatBob ${dot.bobDuration}s ease-in-out infinite`,
-                animationDelay: `${dot.bobDelay}s`,
-              }),
-              animationPlayState: 'paused',
-              ['--dot-bob-amount' as string]: `${-dot.bobAmount}px`,
             }}
           />
-        ))}
+        ) : (
+          dots.map((dot, i) => (
+            <div
+              key={dot.id}
+              ref={(el) => { dotRefs.current[i] = el }}
+              style={{
+                position: 'absolute',
+                left: `${dot.x}%`,
+                top: `${dot.y}%`,
+                width: dot.size,
+                height: dot.size,
+                borderRadius: '50%',
+                backgroundColor: dotColors[i],
+                opacity: 0,
+                zIndex: 2,
+                pointerEvents: 'none',
+                animation: `dotFloatBob ${dot.bobDuration}s ease-in-out infinite`,
+                animationDelay: `${dot.bobDelay}s`,
+                animationPlayState: 'paused',
+                ['--dot-bob-amount' as string]: `${-dot.bobAmount}px`,
+              }}
+            />
+          ))
+        )}
       </div>
     </div>
   )

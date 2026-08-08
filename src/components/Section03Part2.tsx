@@ -243,7 +243,7 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled, skipSigna
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: isMobile ? '5rem 1.5rem 7rem 1.5rem' : '6rem 2rem 9rem 2rem',
+        padding: isMobile ? '5rem 1.5rem 8.5rem 1.5rem' : '6rem 2rem 9rem 2rem',
         gap: isMobile ? '1.3rem' : '2.7rem',
         cursor: settled && !para2Done ? 'default' : 'auto',
       }}

@@ -233,13 +233,29 @@ export function useGraphSection({ steps, blockScrollForward, endBufferMs = 500 }
     return setTimeout(() => {
       if (!svgRef.current || !zoomRef.current) return
       try {
+        // width/height are captured by closure at the moment autoZoom is
+        // CALLED, but this fires `delay`ms later — if the panel's real
+        // size was still transitional/wrong at call time (plausible right
+        // at page load, or right after a nav-bar jump straight into a
+        // section, before layout has fully settled) and corrects itself
+        // before this timer fires, using those stale values fits an
+        // accurate bbox (getBBox reads the live DOM, so it's never stale)
+        // into the WRONG target size — exactly what "too zoomed in on
+        // load, fixed by scrolling away and back" looks like, since
+        // re-entering re-runs the whole effect with by-then-correct
+        // graphSize. Re-measuring the panel directly here, right before
+        // using it, removes that staleness — falls back to the passed-in
+        // values only if the panel ref is unavailable for some reason.
+        const panel = graphPanelRef.current
+        const fitWidth = panel?.clientWidth || width
+        const fitHeight = panel?.clientHeight || height
         const bounds = (g.node() as SVGGElement).getBBox()
         if (bounds.width === 0) return
-        const scaleX = (width - padding * 2) / bounds.width
-        const scaleY = (height - padding * 2) / bounds.height
+        const scaleX = (fitWidth - padding * 2) / bounds.width
+        const scaleY = (fitHeight - padding * 2) / bounds.height
         const scale = Math.min(scaleX, scaleY)
-        const tx = (width - bounds.width * scale) / 2 - bounds.x * scale
-        const ty = (height - bounds.height * scale) / 2 - bounds.y * scale
+        const tx = (fitWidth - bounds.width * scale) / 2 - bounds.x * scale
+        const ty = (fitHeight - bounds.height * scale) / 2 - bounds.y * scale
         d3.select(svgRef.current).transition().duration(600)
           .call(zoomRef.current.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
       } catch (_) {}

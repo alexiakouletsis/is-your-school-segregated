@@ -153,7 +153,13 @@ export default function GraphSection45({ mode, initialNodes, grade3Version, rese
         // bounding box and zoomed way in to fill the panel with it —
         // mathematically right, visually "too zoomed in." Scaling this to
         // the real panel dimensions instead gives autoZoom a sane extent
-        // to fit even in this fallback case.
+        // to fit even in this fallback case. (autoZoom itself now
+        // re-measures the panel's actual current size right when its zoom
+        // timer fires, rather than trusting whatever graphSize was at the
+        // moment this effect ran — see useGraphSection.ts — so this scatter
+        // no longer needs to chase graphSize corrections itself; getBBox()
+        // reads live rendered geometry regardless of what width this was
+        // generated against.)
         return {
           ...n,
           x: cx + (Math.random() - 0.5) * width * 0.7,

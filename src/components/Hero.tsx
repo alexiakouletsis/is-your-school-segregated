@@ -40,14 +40,14 @@ export default function Hero({ curtainDone, onCurtainDropping, setCurtainDone, o
 
         {curtainDone && (
           <div style={{
-            position: 'absolute',
+            position: 'fixed',
             inset: 0,
             zIndex: 10000,
             backgroundColor: 'var(--color-bg)',
             display: 'flex',
-            alignItems: isMobile ? 'center' : 'flex-start',
+            alignItems: 'center',
             justifyContent: 'center',
-            padding: isMobile ? '3rem 2rem 2rem 2rem' : '15vh 4rem 4rem 4rem',
+            padding: isMobile ? '3.5rem 2rem 1.5rem 2rem' : '4rem 4rem 4rem 4rem',
           }}>
             <ArticleIntro
               startTyping={curtainDone}
