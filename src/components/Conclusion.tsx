@@ -76,7 +76,7 @@ function renderAlternating(text: string, colorA: string, colorB: string) {
   ))
 }
 
-const PARA_BEFORE = "School integration has been proven to help disrupt concentrations of poverty and enhance academic outcomes. Yet, within-school segregation is typically a subject that flies under the radar. Putting visuals to the data patterns, talking about the problem, and having empathy for each node on those graphs is how we can truly make a difference. A more connected future can only be achieved by dissolving the walls we have implicitly held for so long. "
+const PARA_BEFORE = "School integration has been proven to help disrupt concentrations of poverty and enhance academic outcomes. Yet, within-school segregation is typically a subject that flies under the radar. Putting visuals to the data patterns, talking about the problem, and having empathy for each node on those networks is how we can truly make a difference. A more connected future can only be achieved by dissolving the walls we have implicitly held for so long. "
 const PARA_ACCENT = "Cross-communication"
 const PARA_AFTER = " starts by sharing a space."
 const PARA_FULL = PARA_BEFORE + PARA_ACCENT + PARA_AFTER

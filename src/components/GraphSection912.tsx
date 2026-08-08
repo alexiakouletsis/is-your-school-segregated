@@ -23,7 +23,7 @@ const STEPS = [
 // step with a defined sentence instead of hardcoding step 1 specifically.
 const STEP_NOTICES: Record<number, string> = {
   0: "This is what a high school with high levels of course tracking/segregation looks like.",
-  2: "The two groups keep drifting apart as pipelines solidify — graphs thin out later because seniors take fewer, scattered classes.",
+  2: "The two groups keep drifting apart as pipelines solidify — classroom networks thin out later because seniors take fewer, scattered classes.",
 }
 const getNoticeTarget = (step: number) => STEP_NOTICES[step] ?? ''
 

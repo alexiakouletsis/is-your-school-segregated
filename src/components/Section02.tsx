@@ -17,7 +17,7 @@ interface Dot {
 const SES_COLORS = ['#F17091', '#F17091', '#00B178', '#00B178', '#F17091', '#00B178']
 const RACE_COLORS = ['#FF954D', '#FF954D', '#6897FF', '#6897FF', '#FF954D', '#6897FF']
 
-const PARA = "Typically begin around 6th grade, middle school floods our graphs with a whole new wave of student body. Students that were once kept in smaller, (mostly) isolated cohorts will truly share classes as a group for the first time. In some schools, course tracking is still minimal at this stage. However, where it's bad... is bad. Let's zoom in on what a less segregated versus more segregated middle school looks like."
+const PARA = "Typically begin around 6th grade, middle school floods our networks with a whole new wave of student body. Students that were once kept in smaller, (mostly) isolated cohorts will truly share classes as a group for the first time. In some schools, course tracking is still minimal at this stage. However, where it's bad... is bad. Let's zoom in on what a less segregated versus more segregated middle school looks like."
 
 function generateDots(mode: Mode, count: number): Dot[] {
   const colors = mode === 'race' ? RACE_COLORS : SES_COLORS

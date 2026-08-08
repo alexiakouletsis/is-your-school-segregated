@@ -4,10 +4,10 @@ import type { Mode } from '../App'
 import ToggleSwitch from './ToggleSwitch'
 
 const SECTIONS = [
-  { id: 'graph-k3', label: 'Graphs K-3' },
-  { id: 'graph-45', label: 'Graphs 3-5' },
-  { id: 'graph-68', label: 'Graphs 6-8' },
-  { id: 'graph-912', label: 'Graphs 9-12' },
+  { id: 'graph-k3', label: 'Grades K-3' },
+  { id: 'graph-45', label: 'Grades 3-5' },
+  { id: 'graph-68', label: 'Grades 6-8' },
+  { id: 'graph-912', label: 'Grades 9-12' },
 ]
 
 interface Props {

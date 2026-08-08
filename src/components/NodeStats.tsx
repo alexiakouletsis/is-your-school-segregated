@@ -35,6 +35,7 @@ type Segment = {
 }
 
 const segmentsLength = (segments: Segment[]) => segments.reduce((sum, s) => sum + s.text.length, 0)
+const segmentsPlainText = (segments: Segment[]) => segments.map(s => s.text).join('')
 
 const Cursor = () => <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
 
@@ -245,56 +246,66 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
       transition={{ duration: 0.6 }}
       style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', pointerEvents: 'none' }}
     >
-      <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize, color: '#111', margin: 0, lineHeight: 1.3, fontWeight: 500 }}>
-        {(() => {
-          const len = typedLenFor(0, stageFullLens[0])
-          return <>{labelText.slice(0, len)}{len > 0 && len < labelText.length && <Cursor />}</>
-        })()}
-      </p>
-      <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize, color: highColor, margin: 0, lineHeight: 1.3, fontWeight: 500 }}>
-        {renderTypedSegments(highSegments, typedLenFor(1, stageFullLens[1]), pulseKey)}
-      </p>
-      <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize, color: lowColor, margin: 0, lineHeight: 1.3, fontWeight: 500 }}>
-        {renderTypedSegments(lowSegments, typedLenFor(2, stageFullLens[2]), pulseKey)}
-      </p>
+      <div style={{ position: 'relative', width: '100%' }}>
+        <p aria-hidden="true" style={{ fontFamily: "'Kiwi Maru', serif", fontSize, color: '#111', margin: 0, lineHeight: 1.3, fontWeight: 500, visibility: 'hidden' }}>
+          {labelText}
+        </p>
+        <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize, color: '#111', margin: 0, lineHeight: 1.3, fontWeight: 500, position: 'absolute', top: 0, left: 0, right: 0 }}>
+          {(() => {
+            const len = typedLenFor(0, stageFullLens[0])
+            return <>{labelText.slice(0, len)}{len > 0 && len < labelText.length && <Cursor />}</>
+          })()}
+        </p>
+      </div>
+      <div style={{ position: 'relative', width: '100%' }}>
+        <p aria-hidden="true" style={{ fontFamily: "'Kiwi Maru', serif", fontSize, color: highColor, margin: 0, lineHeight: 1.3, fontWeight: 500, visibility: 'hidden' }}>
+          {segmentsPlainText(highSegments)}
+        </p>
+        <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize, color: highColor, margin: 0, lineHeight: 1.3, fontWeight: 500, position: 'absolute', top: 0, left: 0, right: 0 }}>
+          {renderTypedSegments(highSegments, typedLenFor(1, stageFullLens[1]), pulseKey)}
+        </p>
+      </div>
+      <div style={{ position: 'relative', width: '100%' }}>
+        <p aria-hidden="true" style={{ fontFamily: "'Kiwi Maru', serif", fontSize, color: lowColor, margin: 0, lineHeight: 1.3, fontWeight: 500, visibility: 'hidden' }}>
+          {segmentsPlainText(lowSegments)}
+        </p>
+        <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize, color: lowColor, margin: 0, lineHeight: 1.3, fontWeight: 500, position: 'absolute', top: 0, left: 0, right: 0 }}>
+          {renderTypedSegments(lowSegments, typedLenFor(2, stageFullLens[2]), pulseKey)}
+        </p>
+      </div>
     </motion.div>
   )
 
   const baselineStat = (
-    <motion.p
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: visible ? 1 : 0 }}
       transition={{ duration: 0.6 }}
-      style={{
-        fontFamily: "'Kiwi Maru', serif", fontSize: shareFontSize, color: '#111', margin: 0,
-        lineHeight: 1.35, fontWeight: 500, pointerEvents: 'none',
-        maxWidth: mobile ? '11.5rem' : '19rem',
-        // Reserves roughly 3 lines' worth of height up front so line-wrap
-        // count changing mid-typing doesn't reflow anything else in the
-        // panel — sized per-paragraph (not the whole group) so the total
-        // still settles at the same auto-height the fully-typed content
-        // would produce anyway, rather than overriding it.
-        minHeight: mobile ? undefined : '4.3rem',
-      }}
+      style={{ position: 'relative', width: '100%', maxWidth: mobile ? '11.5rem' : '19rem', pointerEvents: 'none' }}
     >
-      {renderTypedSegments(baselineSegments, typedLenFor(3, stageFullLens[3]), pulseKey)}
-    </motion.p>
+      <p aria-hidden="true" style={{ fontFamily: "'Kiwi Maru', serif", fontSize: shareFontSize, color: '#111', margin: 0, lineHeight: 1.35, fontWeight: 500, visibility: 'hidden' }}>
+        {segmentsPlainText(baselineSegments)}
+      </p>
+      <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: shareFontSize, color: '#111', margin: 0, lineHeight: 1.35, fontWeight: 500, position: 'absolute', top: 0, left: 0, right: 0 }}>
+        {renderTypedSegments(baselineSegments, typedLenFor(3, stageFullLens[3]), pulseKey)}
+      </p>
+    </motion.div>
   )
 
   const isolationStat = (
-    <motion.p
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: visible ? 1 : 0 }}
       transition={{ duration: 0.6 }}
-      style={{
-        fontFamily: "'Kiwi Maru', serif", fontSize: shareFontSize, color: '#111', margin: 0,
-        lineHeight: 1.35, fontWeight: 500, pointerEvents: 'none',
-        maxWidth: mobile ? '11.5rem' : '19rem',
-        minHeight: mobile ? undefined : '2.9rem',
-      }}
+      style={{ position: 'relative', width: '100%', maxWidth: mobile ? '11.5rem' : '19rem', pointerEvents: 'none' }}
     >
-      {renderTypedSegments(isolationSegments, typedLenFor(4, stageFullLens[4]), pulseKey)}
-    </motion.p>
+      <p aria-hidden="true" style={{ fontFamily: "'Kiwi Maru', serif", fontSize: shareFontSize, color: '#111', margin: 0, lineHeight: 1.35, fontWeight: 500, visibility: 'hidden' }}>
+        {segmentsPlainText(isolationSegments)}
+      </p>
+      <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: shareFontSize, color: '#111', margin: 0, lineHeight: 1.35, fontWeight: 500, position: 'absolute', top: 0, left: 0, right: 0 }}>
+        {renderTypedSegments(isolationSegments, typedLenFor(4, stageFullLens[4]), pulseKey)}
+      </p>
+    </motion.div>
   )
 
   if (mobile) {

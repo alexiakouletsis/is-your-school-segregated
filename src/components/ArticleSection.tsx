@@ -13,7 +13,7 @@ import Section03Part2 from './Section03Part2'
 import GraphSection912 from './GraphSection912'
 import Conclusion from './Conclusion'
 
-const INFO_TEXT = "Graphs are calculated based on how students share classes with one another. The closer the nodes are, the more classes they share. The further they repel from each other, the less classes they share. An edge between two nodes shows that those nodes/students share at least one class."
+const INFO_TEXT = "Classroom networks shown are calculated based on how students share classes with one another. Each node/dot on the networks represent a student. The closer the nodes are, the more classes they share. The further they repel from each other, the less classes they share. An edge between two nodes shows that those nodes/students share at least one class."
 
 const SES_PARA_FULL = "Take these two students entering kindergarten. One of them comes from a family above the median SES line (pink/left), and the other below (green/right). Perhaps throughout being randomly sorted into similar K-3 classes, they became best friends."
 const SES_SEGMENTS = [
@@ -104,6 +104,15 @@ export default function ArticleSection({
   const [skipped, setSkipped] = useState(false)
   const [animsDone, setAnimsDone] = useState(false)
   const [showScroll, setShowScroll] = useState(false)
+  // New two-phase sequence after the body paragraph finishes: the info
+  // box's background+icon fade in first (text still empty), then its own
+  // text types in — animsDone/showScroll (which used to fire the instant
+  // the paragraph finished) now wait for this whole sequence instead,
+  // since they signal "everything here is done" to the rest of the app's
+  // freeze-chain via onAnimDone.
+  const [infoBoxVisible, setInfoBoxVisible] = useState(false)
+  const [infoText, setInfoText] = useState('')
+  const infoInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const paraInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const hasSettledRef = useRef(false)
   const hasResetRef = useRef(false)
@@ -183,12 +192,15 @@ export default function ArticleSection({
     onOverlaySettled(window.scrollY)
   }, [forceStart])
 
-  // reset and retype on mode change
+  // reset and retype on mode change — only the body paragraph, since its
+  // text is mode-dependent. The info box and scroll indicator are left
+  // alone: once infoBoxVisible/animsDone/showScroll are already true, this
+  // doesn't touch them, so their fade-in/typing sequence never replays —
+  // only the paragraph (which Phase 1 below retypes because PARA_FULL
+  // itself changes with mode) visibly reacts to the toggle.
   useEffect(() => {
     setParaText('')
     setSkipped(false)
-    setAnimsDone(false)
-    setShowScroll(false)
     clearInterval(paraInterval.current!)
     if (overlaySettled) {
       setOverlaySettled(false)
@@ -196,6 +208,7 @@ export default function ArticleSection({
     }
   }, [mode])
 
+  // Phase 1: body paragraph types out.
   useEffect(() => {
     if (!overlaySettled || skipped) return
     const t = setTimeout(() => {
@@ -204,8 +217,11 @@ export default function ArticleSection({
           const next = PARA_FULL.slice(0, prev.length + 1)
           if (next.length === PARA_FULL.length) {
             clearInterval(paraInterval.current!)
-            setAnimsDone(true)
-            setShowScroll(true)
+            // Hands off to phase 2 below instead of firing
+            // animsDone/showScroll immediately — those now wait for the
+            // whole sequence (paragraph -> info box fade -> info text) to
+            // finish, not just this first part of it.
+            setInfoBoxVisible(true)
           }
           return next
         })
@@ -213,6 +229,28 @@ export default function ArticleSection({
     }, 800)
     return () => clearTimeout(t)
   }, [overlaySettled, skipped, PARA_FULL])
+
+  // Phase 2: once the info box's background+icon have faded in, phase 3
+  // starts its text typing after a short pause (same pacing convention
+  // used everywhere else in this app between a fade and a typing start).
+  useEffect(() => {
+    if (!infoBoxVisible || skipped) return
+    const t = setTimeout(() => {
+      infoInterval.current = setInterval(() => {
+        setInfoText(prev => {
+          const next = INFO_TEXT.slice(0, prev.length + 1)
+          if (next.length === INFO_TEXT.length) {
+            clearInterval(infoInterval.current!)
+            // Only NOW is the whole sequence actually done.
+            setAnimsDone(true)
+            setShowScroll(true)
+          }
+          return next
+        })
+      }, 18)
+    }, 600)
+    return () => clearTimeout(t)
+  }, [infoBoxVisible, skipped])
 
   useEffect(() => {
     if (animsDone) onAnimDone()
@@ -222,7 +260,10 @@ export default function ArticleSection({
     if (skipped || animsDone) return
     setSkipped(true)
     clearInterval(paraInterval.current!)
+    clearInterval(infoInterval.current!)
     setParaText(PARA_FULL)
+    setInfoBoxVisible(true)
+    setInfoText(INFO_TEXT)
     setAnimsDone(true)
     setShowScroll(true)
     onAnimDone()
@@ -290,7 +331,7 @@ export default function ArticleSection({
         <div style={{ height: '1px', backgroundColor: '#111', width: '100%', flexShrink: 0 }} />
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: isMobile ? '1.5rem 2rem 1rem 2rem' : '6rem 2rem 4rem 2rem',
+          padding: isMobile ? '1.5rem 2rem 2.75rem 2rem' : '6rem 2rem 4rem 2rem',
         }}>
           <h2 data-section-header="01" style={{
             fontFamily: "'Gaegu', cursive",
@@ -304,77 +345,104 @@ export default function ArticleSection({
         <div style={{
           padding: '0 2rem 4rem 2rem',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: isMobile ? '1rem' : '3rem',
+          gap: isMobile ? '1.6rem' : '3rem',
         }}>
-          <div className="info-box" style={{
-            backgroundColor: '#EADDDD',
-            borderRadius: isMobile ? '20px' : '999px',
-            padding: isMobile ? '1.2rem 1.5rem' : '1.2rem 2rem',
-            maxWidth: '900px', width: '100%',
-            display: 'flex', alignItems: 'center', gap: '1.5rem',
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: isMobile ? '1.5rem' : '3.5rem',
+            width: '100%', maxWidth: '900px', padding: '0',
           }}>
+            <img src={dot1Src} style={{
+              width: isMobile ? 'clamp(70px, 18vw, 95px)' : 'clamp(75px, 11vw, 130px)',
+              height: 'auto', animation: 'bob 2s ease-in-out infinite',
+            }} />
+            <img src={dot2Src} style={{
+              width: isMobile ? 'clamp(70px, 18vw, 95px)' : 'clamp(75px, 11vw, 130px)',
+              height: 'auto', animation: 'bob 2s ease-in-out infinite 0.4s',
+            }} />
+          </div>
+
+          <div style={{ position: 'relative', width: '100%', maxWidth: '940px' }}>
+            <p aria-hidden="true" style={{
+              fontFamily: "'Kiwi Maru', serif",
+              fontSize: isMobile ? 'clamp(0.82rem, 1.6vw, 1.1rem)' : 'clamp(1rem, 1.8vw, 1.3rem)',
+              lineHeight: 1.9,
+              width: '100%',
+              textAlign: 'center', margin: 0,
+              visibility: 'hidden',
+            }}>
+              {PARA_FULL}
+            </p>
+            <p style={{
+              fontFamily: "'Kiwi Maru', serif",
+              fontSize: isMobile ? 'clamp(0.82rem, 1.6vw, 1.1rem)' : 'clamp(1rem, 1.8vw, 1.3rem)',
+              color: '#111', lineHeight: 1.9,
+              width: '100%',
+              textAlign: 'center', margin: 0,
+              position: 'absolute', top: 0, left: 0, right: 0,
+            }}>
+              {renderPara()}
+              {paraText.length > 0 && paraText.length < PARA_FULL.length && (
+                <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
+              )}
+            </p>
+          </div>
+
+          <motion.div
+            className="info-box"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: infoBoxVisible ? 1 : 0 }}
+            transition={{ duration: 0.6 }}
+            style={{
+              backgroundColor: '#EADDDD',
+              borderRadius: isMobile ? '20px' : '999px',
+              padding: isMobile ? '1rem 1.5rem' : '1.2rem 2rem',
+              maxWidth: '900px', width: '100%',
+              display: 'flex', alignItems: 'center', gap: '1.5rem',
+            }}
+          >
             <img src="/assets/i-icon.svg" style={{
               width: isMobile ? '32px' : '40px',
               height: isMobile ? '32px' : '40px', flexShrink: 0,
             }} />
-            <p style={{
-              fontFamily: "'Kiwi Maru', serif",
-              fontSize: isMobile ? 'clamp(0.6rem, 2.5vw, 0.72rem)' : 'clamp(0.7rem, 1.2vw, 0.9rem)',
-              color: '#111', lineHeight: 1.6, margin: 0,
-            }}>
-              {INFO_TEXT}
-            </p>
-          </div>
-
-          <p style={{
-            fontFamily: "'Kiwi Maru', serif",
-            fontSize: 'clamp(1rem, 1.8vw, 1.3rem)',
-            color: '#111', lineHeight: 1.9,
-            maxWidth: '940px', width: '100%',
-            textAlign: 'center', margin: 0,
-            minHeight: isMobile ? '14em' : '6em',
-          }}>
-            {renderPara()}
-            {paraText.length > 0 && paraText.length < PARA_FULL.length && (
-              <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-            )}
-          </p>
-
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            gap: isMobile ? '0.5rem' : '0rem',
-            width: '100%', maxWidth: '900px',
-          }}>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: showScroll ? 1 : 0 }}
-              transition={{ duration: 1, delay: 0.5 }}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                gap: '0.75rem',
-                fontFamily: "'Gaegu', cursive",
-                fontSize: 'clamp(1.1rem, 2.5vw, 1.6rem)',
-                color: '#111',
-              }}
-            >
-              <span>scroll</span>
-              <img src="/assets/down-scroll-arrow.svg" style={{ width: isMobile ? '1.25rem' : '1.4rem', height: 'auto' }} />
-            </motion.div>
-
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              width: '100%', padding: '0',
-            }}>
-              <img src={dot1Src} style={{
-                width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 15vw, 180px)',
-                height: 'auto', animation: 'bob 2s ease-in-out infinite',
-              }} />
-              <img src={dot2Src} style={{
-                width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 15vw, 180px)',
-                height: 'auto', animation: 'bob 2s ease-in-out infinite 0.4s',
-              }} />
+            <div style={{ position: 'relative', width: '100%' }}>
+              <p aria-hidden="true" style={{
+                fontFamily: "'Kiwi Maru', serif",
+                fontSize: isMobile ? 'clamp(0.6rem, 2.5vw, 0.72rem)' : 'clamp(0.7rem, 1.2vw, 0.9rem)',
+                lineHeight: 1.6, margin: 0,
+                visibility: 'hidden',
+              }}>
+                {INFO_TEXT}
+              </p>
+              <p style={{
+                fontFamily: "'Kiwi Maru', serif",
+                fontSize: isMobile ? 'clamp(0.6rem, 2.5vw, 0.72rem)' : 'clamp(0.7rem, 1.2vw, 0.9rem)',
+                color: '#111', lineHeight: 1.6, margin: 0,
+                position: 'absolute', top: 0, left: 0, right: 0,
+              }}>
+                {infoText}
+                {infoText.length > 0 && infoText.length < INFO_TEXT.length && (
+                  <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
+                )}
+              </p>
             </div>
-          </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: showScroll ? 1 : 0 }}
+            transition={{ duration: 1, delay: 0.5 }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: '0.75rem',
+              fontFamily: "'Gaegu', cursive",
+              fontSize: 'clamp(1.1rem, 2.5vw, 1.6rem)',
+              color: '#111',
+            }}
+          >
+            <span>scroll</span>
+            <img src="/assets/down-scroll-arrow.svg" style={{ width: isMobile ? '1.25rem' : '1.4rem', height: 'auto' }} />
+          </motion.div>
 
         </div>
 
