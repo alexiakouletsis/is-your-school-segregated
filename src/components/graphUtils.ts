@@ -45,7 +45,13 @@ export const getEdgeColor = (d: Edge, mode: Mode): string => {
 // Low-group students with zero qualifying edges are excluded (an undefined
 // ratio, not a 0%) — same reasoning as computeLowGroupFullIsolationPct
 // below, just applied to averaging instead of a threshold.
-export const computeLowGroupAvgHighNeighborPct = (nodes: Node[], edges: Edge[], mode: Mode): number => {
+// Returns null (not 0) when there's no low-group student with any
+// qualifying edge to average at all — a real 0% ("every low-group
+// student's classmates are entirely low-group") and "nothing valid to
+// compute this from" are different situations and shouldn't render as the
+// same number. Callers (NodeStats) should skip the corresponding sentence
+// entirely on null rather than treating it as a real statistic.
+export const computeLowGroupAvgHighNeighborPct = (nodes: Node[], edges: Edge[], mode: Mode): number | null => {
   const hasGroup = (n: Node) => !!(n.ses || n.race_ethnicity)
   const isHigh = (n: Node) => mode === 'race' ? n.race_ethnicity === 'white_asian' : n.ses === 'higher'
   const byId = new Map(nodes.map(n => [n.id, n]))
@@ -78,7 +84,7 @@ export const computeLowGroupAvgHighNeighborPct = (nodes: Node[], edges: Edge[], 
     counted++
   })
 
-  if (counted === 0) return 0
+  if (counted === 0) return null
   return Math.round((sumHighRatio / counted) * 100)
 }
 
@@ -89,14 +95,18 @@ export const computeLowGroupAvgHighNeighborPct = (nodes: Node[], edges: Edge[], 
 // included) — unlike the averaging helper above, there's no "undefined
 // ratio" here to exclude; a student with no cross-group contact is exactly
 // what this is measuring, degree zero or not.
-export const computeLowGroupFullIsolationPct = (nodes: Node[], edges: Edge[], mode: Mode): number => {
+// Returns null (not 0) when there are no low-group students in this
+// network at all — same reasoning as above: a real 0% ("nobody in the
+// low group is isolated") and "there's no low group to measure" are
+// different situations, and only the former should render as a stat.
+export const computeLowGroupFullIsolationPct = (nodes: Node[], edges: Edge[], mode: Mode): number | null => {
   const hasGroup = (n: Node) => !!(n.ses || n.race_ethnicity)
   const isHigh = (n: Node) => mode === 'race' ? n.race_ethnicity === 'white_asian' : n.ses === 'higher'
   const byId = new Map(nodes.map(n => [n.id, n]))
   const idOf = (end: number | Node): number => (typeof end === 'object' ? end.id : end)
 
   const lowNodes = nodes.filter(n => hasGroup(n) && !isHigh(n))
-  if (lowNodes.length === 0) return 0
+  if (lowNodes.length === 0) return null
 
   const hasHighNeighbor = new Set<number>()
   edges.forEach(e => {

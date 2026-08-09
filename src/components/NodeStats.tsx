@@ -106,7 +106,16 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
   const avgHighNeighborPct = computeLowGroupAvgHighNeighborPct(nodes, edges, mode)
   const isolationPct = computeLowGroupFullIsolationPct(nodes, edges, mode)
 
-  const baselineSegments: Segment[] = mode === 'race'
+  // Empty segments (rather than interpolating "null" into the sentence)
+  // when the underlying value is null — computeLowGroupAvgHighNeighborPct/
+  // computeLowGroupFullIsolationPct return null specifically to mean
+  // "nothing valid to compute this from," not "the answer is 0." An empty
+  // segments array has length 0, which the typing sequence below already
+  // treats as an instant no-op stage, and baselineStat/isolationStat skip
+  // rendering entirely when there's nothing to show (see below) — so this
+  // one change is enough to make the whole degenerate case disappear
+  // cleanly instead of showing a misleading 0%.
+  const baselineSegments: Segment[] = avgHighNeighborPct === null ? [] : mode === 'race'
     ? [
         { text: "On average, a student of color's classmates are " },
         { text: `${avgHighNeighborPct}%`, highlight: true, pulse: true },
@@ -122,7 +131,7 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
         { text: ' if classes were assigned at random.' },
       ]
 
-  const isolationSegments: Segment[] = mode === 'race'
+  const isolationSegments: Segment[] = isolationPct === null ? [] : mode === 'race'
     ? [
         { text: `${isolationPct}%`, highlight: true, pulse: true },
         { text: ' of students of color share zero classes with any white/asian student.' },
@@ -276,7 +285,7 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
     </motion.div>
   )
 
-  const baselineStat = (
+  const baselineStat = baselineSegments.length === 0 ? null : (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: visible ? 1 : 0 }}
@@ -292,7 +301,7 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
     </motion.div>
   )
 
-  const isolationStat = (
+  const isolationStat = isolationSegments.length === 0 ? null : (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: visible ? 1 : 0 }}
@@ -324,23 +333,25 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
         }}>
           {breakdown}
         </div>
-        <div style={{
-          position: 'absolute',
-          bottom: '2rem',
-          right: '1.5rem',
-          zIndex: 4,
-          textAlign: 'left',
-          backgroundColor: 'rgba(250,249,246,0.92)',
-          padding: '0.4rem 0.6rem',
-          borderRadius: '8px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.5rem',
-          maxWidth: '13rem',
-        }}>
-          {baselineStat}
-          {isolationStat}
-        </div>
+        {(baselineStat || isolationStat) && (
+          <div style={{
+            position: 'absolute',
+            bottom: '2rem',
+            right: '1.5rem',
+            zIndex: 4,
+            textAlign: 'left',
+            backgroundColor: 'rgba(250,249,246,0.92)',
+            padding: '0.4rem 0.6rem',
+            borderRadius: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+            maxWidth: '13rem',
+          }}>
+            {baselineStat}
+            {isolationStat}
+          </div>
+        )}
       </>
     )
   }
