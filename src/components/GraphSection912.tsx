@@ -36,16 +36,18 @@ const getNoticeTarget = (step: number) => STEP_NOTICES[step] ?? ''
 // comparison-school steps, these are representative composite
 // protagonists: a real specific student picked PER GRADE (not the same
 // physical person year to year), chosen so (a) their ses/race attributes
-// genuinely match "high"/"low" in both mode dimensions simultaneously, and
-// (b) they share zero classes with their counterpart that year — so the
+// genuinely match "high"/"low" in both mode dimensions simultaneously, (b)
+// they share zero classes with their counterpart that year — so the
 // "two dots never share a class again" throughline from Section03Part2
 // holds every year by construction, even though which real student sits in
-// the "high"/"low" seat changes yearly.
+// the "high"/"low" seat changes yearly — and (c) each has a comparatively
+// high degree among eligible candidates, so they land somewhere visually
+// central rather than as a stray dot at the graph's edge.
 const PROTAGONIST_IDS: Record<number, { high: number; low: number }> = {
-  0: { high: 244, low: 16 },  // grade 9
-  1: { high: 87, low: 224 },  // grade 10
-  2: { high: 197, low: 227 }, // grade 11
-  3: { high: 43, low: 25 },   // grade 12
+  0: { high: 349, low: 52 },  // grade 9
+  1: { high: 214, low: 261 }, // grade 10
+  2: { high: 57, low: 70 },   // grade 11
+  3: { high: 22, low: 106 },  // grade 12
 }
 
 const isProtagonist912 = (id: number, highId: number, lowId: number) =>
@@ -81,25 +83,28 @@ const getEdgeColor912 = (d: Edge, mode: Mode): string => {
   return src.ses === 'higher' ? '#F17091' : '#00B178'
 }
 
-// Node counts here (239-327 per grade) sit in the same range that made
-// grade 6's comparison-school graph glitchy in GraphSection68 (343 nodes
-// uncapped was the problem there), so all four grades stay capped. These
-// caps were previously much smaller for grades 10-12 (160/160/180) to keep
-// total edge count down given the old (incorrectly low) >=1 weight
-// threshold — see MIN_EDGE_WEIGHT below. Now that threshold is back to >=2
-// for all grades, those small caps left 10-12 far too thin (~4-5 edges/node
-// vs 6-8's ~8-8.7). Raised here to bring density back in line: grade 10's
-// 280 lands its final rendered density (~8.5 edges/node, ~2300 edges) right
-// in GraphSection68's range; grades 11 (270) and 12 (245) are set just
-// above their real filtered population (266 and 239 respectively), i.e.
-// effectively "no sampling" for those two, letting their genuinely thinner
-// data (course pathways diverging further each year) show through rather
-// than being artificially padded or over-thinned.
+// This school's filteredFullNodes population (378/334/365/284 across
+// grades 9-12) runs noticeably denser than the original school's — at the
+// same >=2 weight threshold below, its raw per-node density comes out to
+// roughly 25/17.5/12/8 edges/node for grades 9-12 respectively, versus this
+// section's previous ~8-8.7 target range. Deliberately NOT forcing that
+// match here: density scales close to linearly with sampling fraction, so
+// hitting ~8.5 for grade 9 would mean sampling down to roughly a third of
+// its population (378 -> ~125) — a much bigger cut than trimming for
+// render performance, and it would erase what's actually a cleaner, more
+// dramatic version of this section's own "pathways diverge, density drops
+// each year" story than the original school showed. So MIN_EDGE_WEIGHT
+// stays untouched below (still >=2 uniformly) and these caps exist only to
+// keep total node count under the ~343 threshold that made grade 6's
+// comparison-school graph glitchy in GraphSection68 — grades 10 and 12
+// already sit under that on their own (334 and 284) and are left
+// effectively uncapped; grades 9 and 11 (378 and 365) get a modest trim
+// just enough to clear it, not to chase a density number.
 const NODE_SAMPLE_CAP: Record<number, number> = {
-  0: 240, // grade 9
-  1: 280, // grade 10
-  2: 270, // grade 11 (full population; no sampling)
-  3: 245, // grade 12 (full population; no sampling)
+  0: 320, // grade 9 (378 filtered -> trimmed under the glitch threshold)
+  1: 334, // grade 10 (effectively no sampling)
+  2: 335, // grade 11 (365 filtered -> trimmed under the glitch threshold)
+  3: 284, // grade 12 (effectively no sampling)
 }
 
 // All four grades use the same >=2 threshold. An earlier version dropped
@@ -117,6 +122,12 @@ const NODE_SAMPLE_CAP: Record<number, number> = {
 // original comment predicted, just true at >=2 rather than >=1. If that
 // ends up reading as too sparse visually, compensate via NODE_SAMPLE_CAP
 // (more nodes) rather than lowering this threshold again.
+//
+// Re-checked against this school's data specifically: >=1 would pull raw
+// per-node density up to ~45-105 (see NODE_SAMPLE_CAP's comment above) —
+// >=2's own ~8-25 range is already the thinnest usable threshold here, so
+// the same >=2-not->=1 call still holds, if anything more strongly than it
+// did for the original school.
 const MIN_EDGE_WEIGHT: Record<number, number> = {
   0: 2,
   1: 2,
