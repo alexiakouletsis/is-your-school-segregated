@@ -83,7 +83,7 @@ const PARA_FULL = PARA_BEFORE + PARA_ACCENT + PARA_AFTER
 
 const TOGGLE_SENTENCE = "Toggle here to view this entire article again in the context of race rather than socio-economic status. Take note of the similar patterns! :)"
 
-const INFO_BEFORE = "For more information similar subjects, click here to see "
+const INFO_BEFORE = "For more information on similar subjects, click here to see "
 const INFO_LINK = "Plural Connection Group's other research projects"
 const INFO_AFTER = "."
 const INFO_FULL = INFO_BEFORE + INFO_LINK + INFO_AFTER
