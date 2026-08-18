@@ -4,28 +4,24 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useScroll } from 'framer-motion'
 import type { Mode } from '../App'
 
-const PARA1_BEFORE = "In some schools, this pattern of grouping remains up until middle school. In others,\u2003"
+const PARA1_BEFORE = "In some schools, this pattern of clustering students in isolated classes remains up until middle school. In others,\u2003"
 const PARA1_BOLD = "course tracking"
 const PARA1_AFTER = " begins to show around 4th grade."
 const PARA1_FULL = PARA1_BEFORE + PARA1_BOLD + PARA1_AFTER
 
-const SES_PARA2_BEFORE = "Of course, many confounding factors go into placing students in classes. But for this story, let's say that because our "
+const SES_PARA2_BEFORE = "Of course, many factors influence how students are placed into classes. Here, one reason our "
 const SES_PARA2_PINK = "pink"
-const SES_PARA2_AFTER1 = " friend has access to more resources, "
-const SES_PARA2_PINK2 = "pink"
-const SES_PARA2_AFTER2 = " was filtered into an advanced math class, while our "
+const SES_PARA2_AFTER1 = " (higher-SES) friend might be placed in advanced math is because they have access to more prep resources. Meanwhile, our "
 const SES_PARA2_GREEN = "green"
-const SES_PARA2_AFTER3 = " friend stayed in a \"regular\" one. They still share a home room, but varying affluency gaps take form."
-const SES_PARA2_FULL = SES_PARA2_BEFORE + SES_PARA2_PINK + SES_PARA2_AFTER1 + SES_PARA2_PINK2 + SES_PARA2_AFTER2 + SES_PARA2_GREEN + SES_PARA2_AFTER3
+const SES_PARA2_AFTER2 = " friend is placed into \"regular\" math. They still share a home room, but their schedules start to drift apart, and so do they . . ."
+const SES_PARA2_FULL = SES_PARA2_BEFORE + SES_PARA2_PINK + SES_PARA2_AFTER1 + SES_PARA2_GREEN + SES_PARA2_AFTER2
 
-const RACE_PARA2_BEFORE = "Of course, many confounding factors go into placing students in classes. But for this story, let's say that because our "
+const RACE_PARA2_BEFORE = "Of course, many factors influence how students are placed into classes. Here, one reason our "
 const RACE_PARA2_ORANGE = "orange"
-const RACE_PARA2_AFTER1 = " friend has access to more resources, "
-const RACE_PARA2_ORANGE2 = "orange"
-const RACE_PARA2_AFTER2 = " was filtered into an advanced math class, while our "
+const RACE_PARA2_AFTER1 = " friend might be placed in advanced math is because they have access to more prep resources. Meanwhile, our "
 const RACE_PARA2_BLUE = "blue"
-const RACE_PARA2_AFTER3 = " friend stayed in a \"regular\" one. They still share a home room, but varying gaps take form."
-const RACE_PARA2_FULL = RACE_PARA2_BEFORE + RACE_PARA2_ORANGE + RACE_PARA2_AFTER1 + RACE_PARA2_ORANGE2 + RACE_PARA2_AFTER2 + RACE_PARA2_BLUE + RACE_PARA2_AFTER3
+const RACE_PARA2_AFTER2 = " friend is placed into \"regular\" math. They still share a home room, but their schedules start to drift apart, and so do they . . ."
+const RACE_PARA2_FULL = RACE_PARA2_BEFORE + RACE_PARA2_ORANGE + RACE_PARA2_AFTER1 + RACE_PARA2_BLUE + RACE_PARA2_AFTER2
 
 interface Props {
   onAnimDone: () => void
@@ -170,7 +166,7 @@ export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSigna
             onClick={(e) => { e.stopPropagation(); setShowDefinition(prev => !prev) }}
             style={{
               fontWeight: 700,
-              fontSize: isMobile ? 'clamp(1.0rem, 4.4vw, 1.25rem)' : 'clamp(1.25rem, 2.3vw, 1.8rem)',
+              fontSize: isMobile ? 'clamp(0.92rem, 4.1vw, 1.15rem)' : 'clamp(1.13rem, 2.1vw, 1.65rem)',
               textDecoration: showDefinition ? 'underline' : 'none',
               position: 'relative',
               display: 'inline-block',
@@ -196,20 +192,16 @@ export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSigna
   const renderPara2 = () => {
     const segments = mode === 'race' ? [
       { text: RACE_PARA2_BEFORE, color: null },
-      { text: RACE_PARA2_ORANGE, color: null },
+      { text: RACE_PARA2_ORANGE, color: 'var(--color-race-1)' },
       { text: RACE_PARA2_AFTER1, color: null },
-      { text: RACE_PARA2_ORANGE2, color: 'var(--color-race-1)' },
-      { text: RACE_PARA2_AFTER2, color: null },
       { text: RACE_PARA2_BLUE, color: 'var(--color-race-2)' },
-      { text: RACE_PARA2_AFTER3, color: null },
+      { text: RACE_PARA2_AFTER2, color: null },
     ] : [
       { text: SES_PARA2_BEFORE, color: null },
-      { text: SES_PARA2_PINK, color: null },
+      { text: SES_PARA2_PINK, color: 'var(--color-high-ses)' },
       { text: SES_PARA2_AFTER1, color: null },
-      { text: SES_PARA2_PINK2, color: 'var(--color-high-ses)' },
-      { text: SES_PARA2_AFTER2, color: null },
       { text: SES_PARA2_GREEN, color: 'var(--color-low-ses)' },
-      { text: SES_PARA2_AFTER3, color: null },
+      { text: SES_PARA2_AFTER2, color: null },
     ]
     let remaining = para2Text
     return segments.map((seg, i) => {
@@ -251,22 +243,38 @@ export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSigna
         maxWidth: '990px',
         alignItems: 'center',
       }}>
-        <p style={{
-          fontFamily: "'Kiwi Maru', serif",
-          fontSize: isMobile ? 'clamp(1rem, 4vw, 1.2rem)' : 'clamp(1.25rem, 2.15vw, 1.75rem)',
-          color: '#111',
-          lineHeight: 1.7,
-          width: '100%',
-          textAlign: 'center',
-          margin: 0,
-          height: isMobile ? '7em' : '4em',
-          overflow: 'hidden',
-        }}>
-          {renderPara1()}
-          {para1Text.length > 0 && para1Text.length < PARA1_FULL.length && (
-            <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-          )}
-        </p>
+        <div style={{ position: 'relative', width: '100%' }}>
+          <p aria-hidden="true" style={{
+            fontFamily: "'Kiwi Maru', serif",
+            fontSize: isMobile ? 'clamp(0.92rem, 3.7vw, 1.1rem)' : 'clamp(1.13rem, 1.95vw, 1.6rem)',
+            lineHeight: 1.7,
+            width: '100%',
+            textAlign: 'center',
+            margin: 0,
+            visibility: 'hidden',
+          }}>
+            {PARA1_BEFORE}
+            <span style={{ fontWeight: 700, fontSize: isMobile ? 'clamp(0.92rem, 4.1vw, 1.15rem)' : 'clamp(1.13rem, 2.1vw, 1.65rem)' }}>
+              {PARA1_BOLD}
+            </span>
+            {PARA1_AFTER}
+          </p>
+          <p style={{
+            fontFamily: "'Kiwi Maru', serif",
+            fontSize: isMobile ? 'clamp(0.92rem, 3.7vw, 1.1rem)' : 'clamp(1.13rem, 1.95vw, 1.6rem)',
+            color: '#111',
+            lineHeight: 1.7,
+            width: '100%',
+            textAlign: 'center',
+            margin: 0,
+            position: 'absolute', top: 0, left: 0, right: 0,
+          }}>
+            {renderPara1()}
+            {para1Text.length > 0 && para1Text.length < PARA1_FULL.length && (
+              <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
+            )}
+          </p>
+        </div>
 
         <motion.div
           initial={{ height: 0, opacity: 0 }}
@@ -294,23 +302,34 @@ export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSigna
         </motion.div>
       </div>
 
-      <p style={{
-        fontFamily: "'Kiwi Maru', serif",
-        fontSize: isMobile ? 'clamp(0.9rem, 3.5vw, 1.1rem)' : 'clamp(1rem, 1.8vw, 1.3rem)',
-        color: '#111',
-        lineHeight: 1.9,
-        maxWidth: '940px',
-        width: '100%',
-        textAlign: 'center',
-        margin: 0,
-        height: isMobile ? '18em' : '8em',
-        overflow: 'hidden',
-      }}>
-        {renderPara2()}
-        {para2Text.length > 0 && para2Text.length < PARA2_FULL.length && (
-          <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-        )}
-      </p>
+      <div style={{ position: 'relative', width: '100%', maxWidth: '940px' }}>
+        <p aria-hidden="true" style={{
+          fontFamily: "'Kiwi Maru', serif",
+          fontSize: isMobile ? 'clamp(0.82rem, 3.2vw, 1rem)' : 'clamp(0.9rem, 1.65vw, 1.2rem)',
+          lineHeight: 1.9,
+          width: '100%',
+          textAlign: 'center',
+          margin: 0,
+          visibility: 'hidden',
+        }}>
+          {mode === 'race' ? RACE_PARA2_FULL : SES_PARA2_FULL}
+        </p>
+        <p style={{
+          fontFamily: "'Kiwi Maru', serif",
+          fontSize: isMobile ? 'clamp(0.82rem, 3.2vw, 1rem)' : 'clamp(0.9rem, 1.65vw, 1.2rem)',
+          color: '#111',
+          lineHeight: 1.9,
+          width: '100%',
+          textAlign: 'center',
+          margin: 0,
+          position: 'absolute', top: 0, left: 0, right: 0,
+        }}>
+          {renderPara2()}
+          {para2Text.length > 0 && para2Text.length < PARA2_FULL.length && (
+            <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
+          )}
+        </p>
+      </div>
 
       <div style={{
         display: 'flex',

@@ -7,7 +7,7 @@ import {
   type CoursesRaw, type CourseStat,
 } from './courseUtils'
 
-const SES_PARA = "Every course below was taken by at least 50 students across high schools in that district \u2014 ranked from the most heavily above the SES line to the most heavily below it."
+const SES_PARA = "Every course below was taken by at least 50 students across high schools in that district \u2014 ranked from the most heavily higher-SES to the most heavily lower-SES."
 const RACE_PARA = "Every course below was taken by at least 50 students across high schools in that district \u2014 ranked from the most heavily white/asian to the most heavily student-of-color."
 
 interface Props {
@@ -32,13 +32,24 @@ export default function CourseClusterSection({ mode }: Props) {
 
   useEffect(() => {
     fetch('/data/courses.json')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`courses.json fetch failed: ${r.status} ${r.statusText}`)
+        return r.json()
+      })
       .then((raw: CoursesRaw) => {
         setAllStats(computeCourseStats(raw))
         setExpectedPct({
           ses: computeExpectedPct(raw, 'ses'),
           race: computeExpectedPct(raw, 'race'),
         })
+      })
+      .catch(err => {
+        // Without this, a failed fetch left allStats/expectedPct at their
+        // empty initial state forever with zero indication why — the rest
+        // of the section (title, paragraph, legend) still renders fine
+        // since none of it depends on this data, so only the bar list
+        // silently disappears. Logging at least makes that diagnosable.
+        console.error('CourseClusterSection: failed to load courses.json', err)
       })
   }, [])
 
@@ -98,8 +109,8 @@ export default function CourseClusterSection({ mode }: Props) {
   const pctKey: keyof CourseStat = mode === 'race' ? 'whiteAsianPct' : 'higherPct'
   const highColor = mode === 'race' ? 'var(--color-race-1)' : 'var(--color-high-ses)'
   const lowColor = mode === 'race' ? 'var(--color-race-2)' : 'var(--color-low-ses)'
-  const highLabel = mode === 'race' ? 'White/Asian' : 'Above SES Line'
-  const lowLabel = mode === 'race' ? 'Student of Color' : 'Below SES Line'
+  const highLabel = mode === 'race' ? 'White/Asian' : 'Higher SES'
+  const lowLabel = mode === 'race' ? 'Student of Color' : 'Lower SES'
 
   return (
     <div

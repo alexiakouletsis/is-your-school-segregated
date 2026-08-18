@@ -66,7 +66,7 @@ const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t))
 
 // Renders each character of a (possibly partially-typed) word in an
-// alternating color pair — used for "Cross-communication" (alternating
+// alternating color pair — used for "Genuine connection" (alternating
 // with the current mode's two colors) and the toggle's "SES"/"Race"
 // labels (each always alternating its OWN fixed pair, regardless of mode,
 // since they're naming the toggle options themselves).
@@ -76,14 +76,14 @@ function renderAlternating(text: string, colorA: string, colorB: string) {
   ))
 }
 
-const PARA_BEFORE = "School integration has been proven to help disrupt concentrations of poverty and enhance academic outcomes. Yet, within-school segregation is typically a subject that flies under the radar. Putting visuals to the data patterns, talking about the problem, and having empathy for each node on those networks is how we can truly make a difference. A more connected future can only be achieved by dissolving the walls we have implicitly held for so long. "
-const PARA_ACCENT = "Cross-communication"
+const PARA_BEFORE = "School integration has been proven to help disrupt concentrations of poverty and enhance academic outcomes. Yet, within-school segregation is typically a subject that flies under the radar. Putting visuals to the data patterns, talking about the problem, and having empathy for each student in these networks-and nurturing their potential-is how we can truly make a difference. A more connected future can only be achieved by dissolving the walls we have implicitly held for so long. "
+const PARA_ACCENT = "Genuine connection"
 const PARA_AFTER = " starts by sharing a space."
 const PARA_FULL = PARA_BEFORE + PARA_ACCENT + PARA_AFTER
 
 const TOGGLE_SENTENCE = "Toggle here to view this entire article again in the context of race rather than socio-economic status. Take note of the similar patterns! :)"
 
-const INFO_BEFORE = "For more information on similar subjects, click here to see "
+const INFO_BEFORE = "For more information similar subjects, click here to see "
 const INFO_LINK = "Plural Connection Group's other research projects"
 const INFO_AFTER = "."
 const INFO_FULL = INFO_BEFORE + INFO_LINK + INFO_AFTER
@@ -227,7 +227,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
   }, [isMobile])
 
   // Mode changes (via the nav bar or 'R' key) no longer reset/retype the
-  // whole sequence — only the "Cross-communication" accent word reanimates
+  // whole sequence — only the "Genuine connection" accent word reanimates
   // (see its key={mode} in renderPara below), since paraText/toggleVisible/
   // etc. don't need to be touched at all: their colors (where relevant)
   // are already recomputed live from `mode` on every render regardless.

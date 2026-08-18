@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { Mode } from '../App'
 
-const PARA1_FULL = "Our two nodes are growing up. Now they get to make their schedules—but what to pick? Honors/AP or regular? What electives?"
-const PARA2_FULL = "Before we dive into how segregation now looks for our nodes in high school, let's first observe which specific classes in high school are most divisive."
+const PARA1_FULL = "Our two students are growing up. Now they get to make their schedules—but what to pick? Honors/AP or regular? What electives?"
+const PARA2_FULL = "Before we dive into how segregation now looks for these students in high school, let's first observe which specific classes in high school are most divisive."
 
 export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipSignal?: number }) {
   const containerRef = useRef<HTMLDivElement>(null)

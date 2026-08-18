@@ -4,9 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useScroll } from 'framer-motion'
 import type { Mode } from '../App'
 
-const PARA1 = "As students are filtered into varying levels of classes (regular, honors, AP, etc.), course tracking becomes most prevalent in high school. Throughout the four years, students become increasingly segregated into solidified class pathways, never interacting across those boundaries. These boundaries show clear correlation with attributes like a student's ethnicity and economic background."
+const PARA1 = "As students are filtered into varying levels of classes (regular, honors, AP, etc.), course tracking remains prevalent in high school. Throughout their four years, students continue to develop into solidified class pathways, often failing to interact across those boundaries. These boundaries show clear correlation with attributes like a student's ethnicity and socioeconomic background."
 
-const SES_PARA2_BEFORE = "Our two dots are now on completely different pathways. Being set early on an advanced trajectory, "
+const SES_PARA2_BEFORE = "Our two students are now on completely different pathways. Being set early on an advanced trajectory, "
 const SES_PARA2_PINK = "pink"
 const SES_PARA2_AFTER1 = " is only taking honors and AP classes. After always being put in \u201cregular\u201d classes throughout previous years, "
 const SES_PARA2_GREEN = "green"
@@ -14,7 +14,7 @@ const SES_PARA2_AFTER2 = " remains on that pathway. "
 const SES_PARA2_BIG = "The two never share a class again."
 const SES_PARA2_FULL = SES_PARA2_BEFORE + SES_PARA2_PINK + SES_PARA2_AFTER1 + SES_PARA2_GREEN + SES_PARA2_AFTER2 + SES_PARA2_BIG
 
-const RACE_PARA2_BEFORE = "Our two dots are now on completely different pathways. Being set early on an advanced trajectory, "
+const RACE_PARA2_BEFORE = "Our two students are now on completely different pathways. Being set early on an advanced trajectory, "
 const RACE_PARA2_ORANGE = "orange"
 const RACE_PARA2_AFTER1 = " is only taking honors and AP classes. After always being put in \u201cregular\u201d classes throughout previous years, "
 const RACE_PARA2_BLUE = "blue"

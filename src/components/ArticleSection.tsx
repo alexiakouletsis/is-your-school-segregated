@@ -13,22 +13,22 @@ import Section03Part2 from './Section03Part2'
 import GraphSection912 from './GraphSection912'
 import Conclusion from './Conclusion'
 
-const INFO_TEXT = "Classroom networks shown are calculated based on how students share classes with one another. Each node/dot on the networks represent a student. The closer the nodes are, the more classes they share. The further they repel from each other, the less classes they share. An edge between two nodes shows that those nodes/students share at least one class."
+const INFO_TEXT = "The classroom networks show how students share classes with one another. Each node/dot represents a student, and a line between two dots means those students share at least one class section together. The closer the nodes are, the more often they are in classrooms together."
 
-const SES_PARA_FULL = "Take these two students entering kindergarten. One of them comes from a family above the median SES line (pink/left), and the other below (green/right). Perhaps throughout being randomly sorted into similar K-3 classes, they became best friends."
+const SES_PARA_FULL = "Take these two students entering kindergarten. One of them comes from a higher-SES family (pink/left), and the other from a lower-SES family (green/right). Despite these different backgrounds, they ended up in similar classrooms together in grades K-3 and became best friends."
 const SES_SEGMENTS = [
-  { text: "Take these two students entering kindergarten. One of them comes from a family ", color: null },
-  { text: "above", color: 'var(--color-high-ses)' },
-  { text: " the median SES line (", color: null },
+  { text: "Take these two students entering kindergarten. One of them comes from a ", color: null },
+  { text: "higher-SES", color: 'var(--color-high-ses)' },
+  { text: " family (", color: null },
   { text: "pink/left", color: 'var(--color-high-ses)' },
-  { text: "), and the other ", color: null },
-  { text: "below", color: 'var(--color-low-ses)' },
-  { text: " (", color: null },
+  { text: "), and the other from a ", color: null },
+  { text: "lower-SES", color: 'var(--color-low-ses)' },
+  { text: " family (", color: null },
   { text: "green/right", color: 'var(--color-low-ses)' },
-  { text: "). Perhaps throughout being randomly sorted into similar K-3 classes, they became best friends.", color: null },
+  { text: "). Despite these different backgrounds, they ended up in similar classrooms together in grades K-3 and became best friends.", color: null },
 ]
 
-const RACE_PARA_FULL = "Take these two students entering kindergarten. One of them is a white/asian student (orange/left), and the other is a student of color (blue/right). Perhaps throughout being randomly sorted into similar K-3 classes, they became best friends."
+const RACE_PARA_FULL = "Take these two students entering kindergarten. One of them is a white/asian student (orange/left), and the other is a student of color (blue/right). Despite these different backgrounds, they ended up in similar classrooms together in grades K-3 and became best friends."
 const RACE_SEGMENTS = [
   { text: "Take these two students entering kindergarten. One of them is a ", color: null },
   { text: "white/asian student", color: 'var(--color-race-1)' },
@@ -38,7 +38,7 @@ const RACE_SEGMENTS = [
   { text: "student of color", color: 'var(--color-race-2)' },
   { text: " (", color: null },
   { text: "blue/right", color: 'var(--color-race-2)' },
-  { text: "). Perhaps throughout being randomly sorted into similar K-3 classes, they became best friends.", color: null },
+  { text: "). Despite these different backgrounds, they ended up in similar classrooms together in grades K-3 and became best friends.", color: null },
 ]
 
 interface Node {

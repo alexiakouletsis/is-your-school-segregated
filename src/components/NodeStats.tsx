@@ -89,8 +89,8 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
   const highPct = hasData ? Math.round((highCount / total) * 100) : 0
   const lowPct = hasData ? 100 - highPct : 0
 
-  const highLabelText = mode === 'race' ? ' of students are white/asian' : ' of students are high-SES'
-  const lowLabelText = mode === 'race' ? ' of students are students of color' : ' of students are low-SES'
+  const highLabelText = mode === 'race' ? ' of students are white/asian' : ' of students are higher-SES'
+  const lowLabelText = mode === 'race' ? ' of students are students of color' : ' of students are lower-SES'
   const highColor = mode === 'race' ? '#FF954D' : '#F17091'
   const lowColor = mode === 'race' ? '#6897FF' : '#00B178'
 
@@ -124,9 +124,9 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
         { text: ' if classes were assigned at random.' },
       ]
     : [
-        { text: "On average, a low-SES student's classmates are " },
+        { text: "On average, a lower-SES student's classmates are " },
         { text: `${avgHighNeighborPct}%`, highlight: true, pulse: true },
-        { text: " high-SES — you'd expect " },
+        { text: " higher-SES — you'd expect " },
         { text: `${highPct}%`, highlight: true, pulse: true },
         { text: ' if classes were assigned at random.' },
       ]
@@ -138,7 +138,7 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
       ]
     : [
         { text: `${isolationPct}%`, highlight: true, pulse: true },
-        { text: ' of low-SES students share zero classes with any high-SES student.' },
+        { text: ' of lower-SES students share zero classes with any higher-SES student.' },
       ]
 
   // --- Sequential type-out on first appearance ------------------------

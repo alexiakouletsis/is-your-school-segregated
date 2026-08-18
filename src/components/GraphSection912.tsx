@@ -23,7 +23,7 @@ const STEPS = [
 // step with a defined sentence instead of hardcoding step 1 specifically.
 const STEP_NOTICES: Record<number, string> = {
   0: "This is what a high school with high levels of course tracking/segregation looks like.",
-  2: "The two groups keep drifting apart as pipelines solidify — classroom networks thin out later because seniors take fewer, scattered classes.",
+  2: "The two groups keep drifting apart as pipelines solidify — classroom networks show fewer connections later (not less segregation) because upperclassmen take fewer, scattered classes.",
 }
 const getNoticeTarget = (step: number) => STEP_NOTICES[step] ?? ''
 
@@ -770,7 +770,15 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ height: '9rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
                 {noticeText && (
-                  <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                  <p style={{
+                    fontFamily: "'Kiwi Maru', serif",
+                    // Step 2's sentence is meaningfully longer than step
+                    // 0's and was wrapping into the title below it at the
+                    // original size — scoped to just this step so grade
+                    // 9's shorter notice isn't affected.
+                    fontSize: currentStep === 2 ? 'clamp(0.9rem, 1.55vw, 1.2rem)' : 'clamp(1rem, 1.8vw, 1.4rem)',
+                    color: '#111', lineHeight: 1.6, margin: 0,
+                  }}>
                     {renderNoticeContent()}
                   </p>
                 )}

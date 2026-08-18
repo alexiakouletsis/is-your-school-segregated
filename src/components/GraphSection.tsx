@@ -195,7 +195,7 @@ export default function GraphSection({ mode, onGrade3Complete, resetSignal }: {
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#EADDDD', borderRadius: '999px', padding: mobile ? '0.4rem 0.8rem' : '0.5rem 1rem', opacity: 0.85 }}>
       <img src="/assets/i-icon.svg" style={{ width: mobile ? '14px' : '16px', height: mobile ? '14px' : '16px', flexShrink: 0 }} />
       <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: mobile ? 'clamp(0.55rem, 2.5vw, 0.7rem)' : 'clamp(0.55rem, 0.9vw, 0.75rem)', color: '#111', margin: 0, lineHeight: 1.4 }}>
-        {isMobile ? 'Tap and drag on nodes to explore connections!' : 'Hover over and drag on nodes to explore connections!'}
+        {isMobile ? 'Tap and drag on the dots to explore connections!' : 'Hover over and drag on the dots to explore connections!'}
       </p>
     </div>
   )
