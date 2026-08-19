@@ -758,9 +758,18 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
               out. */}
           {!isMobile && (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ height: '9rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
+              {/* Fixed, uniform height across every step — NOT
+                  per-step-measured. See GraphSection912's identical
+                  comment for the full reasoning: ghost-text sizing let
+                  this box's height vary step to step, which shifted the
+                  title's vertical position along with it (visible as the
+                  title drifting up/down between steps). Locking to one
+                  height (sized for the longest alt-school sentence, which
+                  is also why those steps' font is smaller below) keeps
+                  the title's position identical on every step. */}
+              <div style={{ height: '11.5rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
                 {(currentStep === 1 ? noticeText : altTypedText || altTypingDone) && (
-                  <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                  <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: currentStep >= 2 ? 'clamp(0.94rem, 1.55vw, 1.2rem)' : 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
                     {renderNoticeContent()}
                   </p>
                 )}

@@ -628,6 +628,25 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
       // top-level groups unambiguous.
       .force('x', d3.forceX((d: Node) => cx + (isHighGroup912(d, mode) ? -140 : 140)).strength(0.06))
       .force('y', d3.forceY(cy).strength(0.028))
+      // Dedicated to JUST the two protagonists, separate from the
+      // group-level x/y nudges above. Those apply the same soft pull to
+      // every node in a side, which keeps the two groups broadly apart in
+      // aggregate but doesn't guarantee any TWO SPECIFIC nodes end up far
+      // apart — the protagonists' own individual link/charge forces could
+      // still pull them close to each other or to the group boundary
+      // (visually reading as "close together" despite genuinely sharing
+      // zero classes). Strength 0 for every non-protagonist node means
+      // these two forces have literally no effect on the rest of the
+      // simulation or its existing tuning — proportional offsets (not
+      // fixed px) so this scales correctly across the four grades' panel
+      // sizes. Strength 0.4 is a strong pull but not a hard pin (unlike
+      // fx/fy) — the two still participate in the physics and can wobble
+      // with it, just anchored toward opposite corners strongly enough to
+      // reliably win out over local link pull.
+      .force('protagonistX', d3.forceX((d: Node) => d.id === highId ? cx - width * 0.32 : cx + width * 0.32)
+        .strength((d: Node) => (d.id === highId || d.id === lowId) ? 0.4 : 0))
+      .force('protagonistY', d3.forceY((d: Node) => d.id === highId ? cy - height * 0.28 : cy + height * 0.28)
+        .strength((d: Node) => (d.id === highId || d.id === lowId) ? 0.4 : 0))
       .force('collision', d3.forceCollide().radius(13))
       // Faster than GraphSection/GraphSection45/68's shared 0.0228 default —
       // this only changes how many ticks it takes to cool down to the same
@@ -768,15 +787,37 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
               out. */}
           {!isMobile && (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ height: '9rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
+              {/* Fixed, uniform height across every step — NOT
+                  per-step-measured. Ghost-text sizing (the previous
+                  approach here) guaranteed no clipping, but let this box's
+                  real height vary step to step, which moved the flex:1
+                  spacer's split and therefore the title's vertical
+                  position along with it (a taller notice pushes the title
+                  DOWN, not up, since the notice itself takes more of the
+                  fixed total height even after the spacer partially
+                  compensates) — visible as the title drifting up/down
+                  between steps depending on whether that step's notice is
+                  empty, short, or long. Locking this to one height (sized
+                  to comfortably fit step 2's sentence, the longest one,
+                  which is also why that sentence's font is smaller below)
+                  keeps the title's position identical on every step. */}
+              <div style={{ height: '11.5rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
                 {noticeText && (
                   <p style={{
                     fontFamily: "'Kiwi Maru', serif",
-                    // Step 2's sentence is meaningfully longer than step
-                    // 0's and was wrapping into the title below it at the
-                    // original size — scoped to just this step so grade
-                    // 9's shorter notice isn't affected.
-                    fontSize: currentStep === 2 ? 'clamp(0.9rem, 1.55vw, 1.2rem)' : 'clamp(1rem, 1.8vw, 1.4rem)',
+                    // Tracks noticeTargetRef (what's actually being
+                    // displayed) rather than currentStep === 2. Steps
+                    // without their own notice (1 and 3) intentionally
+                    // leave the previous step's text on screen rather
+                    // than clearing it (see the notice-text effect
+                    // above) — so at grade 12, noticeText is still grade
+                    // 11's long sentence even though currentStep is 3.
+                    // Checking currentStep here mismatched exactly that
+                    // case: long text, but the font meant for short
+                    // sentences, since currentStep no longer equaled 2 —
+                    // which is what read as "the font enlarges and
+                    // overlaps again" when scrolling onward past grade 11.
+                    fontSize: noticeTargetRef.current === STEP_NOTICES[2] ? 'clamp(0.94rem, 1.55vw, 1.2rem)' : 'clamp(1rem, 1.8vw, 1.4rem)',
                     color: '#111', lineHeight: 1.6, margin: 0,
                   }}>
                     {renderNoticeContent()}

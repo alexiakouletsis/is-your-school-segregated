@@ -169,17 +169,18 @@ export default function Hero({ curtainDone, onCurtainDropping, setCurtainDone, o
                   </div>
                 </div>
 
-                <div style={{
-                  position: 'absolute',
-                  left: '49.9%',
-                  top: '64.8%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1.5rem',
-                  fontFamily: "'Gaegu', cursive",
-                  fontSize: 'clamp(0.8rem, 2.8vw, 40px)',
-                  color: '#111',
-                }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: '49.9%',
+                    top: '64.8%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1.5rem',
+                    fontFamily: "'Gaegu', cursive",
+                    fontSize: 'clamp(0.8rem, 2.8vw, 40px)',
+                    color: '#111',
+                  }}>
                   <span>scroll</span>
                   <img src="/assets/down-scroll-arrow.svg" style={{ width: '3.55vw', maxWidth: '38px' }} />
                 </div>

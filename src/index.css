@@ -82,3 +82,28 @@ body {
 .nav-link:hover {
   text-decoration: underline !important;
 }
+
+.scroll-cue-text {
+  /* A background line (not text-decoration) anchored to the LEFT edge —
+     growing background-size extends rightward from that fixed left edge
+     (fade in left-to-right), and shrinking it back retreats from the
+     right side toward that same fixed left edge (fade out right-to-left)
+     — exactly the asymmetric in/out direction requested, achieved for
+     free just by which edge the background is anchored to.
+     line-height: 1 matters here — 'bottom' otherwise measures from the
+     bottom of the full (taller, inherited) line box, not the actual glyph
+     baseline, which is what left a visible gap between the text and the
+     line. Tightening the box to the text itself brings the line right up
+     against it, matching a normal text-decoration underline's position. */
+  display: inline-block;
+  line-height: 1;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: left bottom;
+  background-repeat: no-repeat;
+  transition: background-size 0.35s ease;
+}
+
+.scroll-cue:hover .scroll-cue-text {
+  background-size: 100% 1px;
+}

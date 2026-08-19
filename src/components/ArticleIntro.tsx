@@ -224,6 +224,8 @@ export default function ArticleIntro({ startTyping, onDone, onReset, onAdvance, 
     // shows a "tap" cue), a further tap should advance to Section 01 instead
     // of re-running skipAll (which would just be a harmless no-op). Desktop
     // is unaffected — it still always calls skipAll here, same as before.
+    // (Desktop click-to-advance was tried and reverted twice — leaving this
+    // mobile-only, which is the one path actually confirmed to work.)
     if (isMobile && showScroll) {
       onAdvance?.()
     } else {

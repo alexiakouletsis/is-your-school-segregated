@@ -17,6 +17,34 @@ function App() {
   // guarantee every one of them returns to its pristine initial value,
   // without needing to enumerate and verify each piece of state by hand.
   const [heroResetKey, setHeroResetKey] = useState(0)
+  // Ambient scroll feedback: a thin fixed bar at the very top of the
+  // viewport showing overall progress through the whole page. Exists
+  // because scrollbars are sometimes invisible by default (e.g. macOS
+  // auto-hides trackpad scrollbars until actively scrolling) with nothing
+  // in this codebase controlling that — it's OS behavior, not something
+  // fixable here — and because several sections intentionally block
+  // forward scroll during an intro animation, which without any feedback
+  // can read as "the page just isn't responding" rather than "there's an
+  // animation still playing." This is a pure read of window.scrollY —
+  // it doesn't write to or interact with any of those per-section
+  // wheel-lock mechanisms, so it can't affect their behavior.
+  const [scrollProgress, setScrollProgress] = useState(0)
+  useEffect(() => {
+    // Polling via requestAnimationFrame rather than the 'scroll' event —
+    // scroll events can fire in bursty, uneven chunks depending on input
+    // device/browser (especially trackpad momentum scrolling), which read
+    // as the bar visibly jumping in steps rather than gliding smoothly.
+    // Sampling every animation frame instead ties the update rate to
+    // actual rendering, which is what makes it look continuous.
+    let rafId: number
+    const update = () => {
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight
+      setScrollProgress(scrollable > 0 ? Math.min(1, window.scrollY / scrollable) : 0)
+      rafId = requestAnimationFrame(update)
+    }
+    rafId = requestAnimationFrame(update)
+    return () => cancelAnimationFrame(rafId)
+  }, [])
   const [forceSection01Start, setForceSection01Start] = useState(0)
   const [curtainDropping, setCurtainDropping] = useState(false)
   const [mobilePressed, setMobilePressed] = useState(false)
@@ -329,6 +357,26 @@ function App() {
 
   return (
     <main>
+      <div style={{
+        position: 'fixed',
+        top: 0, left: 0,
+        width: '100%',
+        height: '1.5px',
+        backgroundColor: 'transparent',
+        zIndex: 99999,
+        pointerEvents: 'none',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          height: '100%',
+          width: `${scrollProgress * 100}%`,
+          backgroundImage: mode === 'race'
+            ? "url('/assets/orangebluebar.svg')"
+            : "url('/assets/pinkgreenbar.svg')",
+          backgroundRepeat: 'repeat-x',
+          backgroundSize: 'auto 100%',
+        }} />
+      </div>
       <Hero
         key={heroResetKey}
         curtainDone={curtainDone}
@@ -340,10 +388,11 @@ function App() {
           setTypingDone(true)
         }}
         onAdvance={() => {
-          // The intro's own last line already shows a "tap" cue, so we don't
-          // need a separate "tap to continue" overlay prompt here — the
-          // intro itself (once done) calls this directly when tapped.
-          if (!isMobileDevice()) return
+          // Originally only ran for the intro's own tap-to-advance flow on
+          // mobile — now also the target for a direct click on the
+          // intro's scroll cue on desktop, so the isMobileDevice() gate
+          // that used to no-op it there is gone. The scroll-target math
+          // itself was already platform-agnostic.
 
           // v≈0.35 on ArticleSection's ["start end","end end"] scroll range —
           // just past the sticky-engage point, keeping the title in view at

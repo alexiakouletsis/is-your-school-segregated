@@ -327,6 +327,8 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled, skipSigna
         maxWidth: '900px',
       }}>
         <motion.div
+          onClick={() => showScroll && window.scrollBy({ top: window.innerHeight * 1.35, behavior: 'smooth' })}
+            className="scroll-cue"
           initial={{ opacity: 0 }}
           animate={{ opacity: showScroll ? 1 : 0 }}
           transition={{ duration: 1, delay: 0.5 }}
@@ -338,9 +340,11 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled, skipSigna
             fontFamily: "'Gaegu', cursive",
             fontSize: 'clamp(1.1rem, 2.5vw, 1.6rem)',
             color: '#111',
+            cursor: showScroll ? 'pointer' : 'default',
+            pointerEvents: showScroll ? 'auto' : 'none',
           }}
         >
-          <span>scroll</span>
+          <span className="scroll-cue-text">scroll</span>
           <img src="/assets/down-scroll-arrow.svg" style={{ width: isMobile ? '1.25rem' : '1.4rem', height: 'auto' }} />
         </motion.div>
 

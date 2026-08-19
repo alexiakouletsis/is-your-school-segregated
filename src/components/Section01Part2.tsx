@@ -13,15 +13,17 @@ const SES_PARA2_BEFORE = "Of course, many factors influence how students are pla
 const SES_PARA2_PINK = "pink"
 const SES_PARA2_AFTER1 = " (higher-SES) friend might be placed in advanced math is because they have access to more prep resources. Meanwhile, our "
 const SES_PARA2_GREEN = "green"
-const SES_PARA2_AFTER2 = " friend is placed into \"regular\" math. They still share a home room, but their schedules start to drift apart, and so do they . . ."
-const SES_PARA2_FULL = SES_PARA2_BEFORE + SES_PARA2_PINK + SES_PARA2_AFTER1 + SES_PARA2_GREEN + SES_PARA2_AFTER2
+const SES_PARA2_AFTER2 = " friend is placed into \"regular\" math. They still share a home room, but their schedules start to drift apart, and so do they"
+const SES_PARA2_ELLIPSIS = " . . ."
+const SES_PARA2_FULL = SES_PARA2_BEFORE + SES_PARA2_PINK + SES_PARA2_AFTER1 + SES_PARA2_GREEN + SES_PARA2_AFTER2 + SES_PARA2_ELLIPSIS
 
 const RACE_PARA2_BEFORE = "Of course, many factors influence how students are placed into classes. Here, one reason our "
 const RACE_PARA2_ORANGE = "orange"
 const RACE_PARA2_AFTER1 = " friend might be placed in advanced math is because they have access to more prep resources. Meanwhile, our "
 const RACE_PARA2_BLUE = "blue"
-const RACE_PARA2_AFTER2 = " friend is placed into \"regular\" math. They still share a home room, but their schedules start to drift apart, and so do they . . ."
-const RACE_PARA2_FULL = RACE_PARA2_BEFORE + RACE_PARA2_ORANGE + RACE_PARA2_AFTER1 + RACE_PARA2_BLUE + RACE_PARA2_AFTER2
+const RACE_PARA2_AFTER2 = " friend is placed into \"regular\" math. They still share a home room, but their schedules start to drift apart, and so do they"
+const RACE_PARA2_ELLIPSIS = " . . ."
+const RACE_PARA2_FULL = RACE_PARA2_BEFORE + RACE_PARA2_ORANGE + RACE_PARA2_AFTER1 + RACE_PARA2_BLUE + RACE_PARA2_AFTER2 + RACE_PARA2_ELLIPSIS
 
 interface Props {
   onAnimDone: () => void
@@ -196,12 +198,14 @@ export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSigna
       { text: RACE_PARA2_AFTER1, color: null },
       { text: RACE_PARA2_BLUE, color: 'var(--color-race-2)' },
       { text: RACE_PARA2_AFTER2, color: null },
+      { text: RACE_PARA2_ELLIPSIS, color: null, nudge: true },
     ] : [
       { text: SES_PARA2_BEFORE, color: null },
       { text: SES_PARA2_PINK, color: 'var(--color-high-ses)' },
       { text: SES_PARA2_AFTER1, color: null },
       { text: SES_PARA2_GREEN, color: 'var(--color-low-ses)' },
       { text: SES_PARA2_AFTER2, color: null },
+      { text: SES_PARA2_ELLIPSIS, color: null, nudge: true },
     ]
     let remaining = para2Text
     return segments.map((seg, i) => {
@@ -209,6 +213,12 @@ export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSigna
       const chunk = remaining.slice(0, seg.text.length)
       remaining = remaining.slice(seg.text.length)
       if (!chunk) return null
+      // Kiwi Maru's period glyph sits noticeably higher than the baseline
+      // at this line-height — nudging just this trailing ". . ." down a
+      // touch compensates without affecting the rest of the paragraph.
+      if (seg.nudge) {
+        return <span key={i} style={{ position: 'relative', top: '0.12em' }}>{chunk}</span>
+      }
       return seg.color
         ? <span key={i} style={{ color: seg.color }}>{chunk}</span>
         : <span key={i}>{chunk}</span>
@@ -340,6 +350,8 @@ export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSigna
         maxWidth: '900px',
       }}>
         <motion.div
+          onClick={() => showScroll && window.scrollBy({ top: window.innerHeight * 1.35, behavior: 'smooth' })}
+            className="scroll-cue"
           initial={{ opacity: 0 }}
           animate={{ opacity: showScroll ? 1 : 0 }}
           transition={{ duration: 1, delay: 0.5 }}
@@ -351,9 +363,11 @@ export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSigna
             fontFamily: "'Gaegu', cursive",
             fontSize: 'clamp(1.1rem, 2.5vw, 1.6rem)',
             color: '#111',
+            cursor: showScroll ? 'pointer' : 'default',
+            pointerEvents: showScroll ? 'auto' : 'none',
           }}
         >
-          <span>scroll</span>
+          <span className="scroll-cue-text">scroll</span>
           <img src="/assets/down-scroll-arrow.svg" style={{ width: isMobile ? '1.25rem' : '1.4rem', height: 'auto' }} />
         </motion.div>
 

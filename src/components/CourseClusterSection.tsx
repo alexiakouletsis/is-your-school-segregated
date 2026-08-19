@@ -210,7 +210,7 @@ export default function CourseClusterSection({ mode }: Props) {
             pointerEvents: 'none',
           }}
         >
-          Expected if random: {Math.round(expectedPct[mode])}%
+          {Math.round(expectedPct[mode])}% of high schoolers across the district are {mode === 'race' ? 'white/asian' : 'higher-SES'}
         </motion.div>
 
         <motion.div
