@@ -10,10 +10,10 @@ export const isProtagonist = (id: number, mode: Mode) =>
   id === PROTAGONIST_HIGH || id === getProtagonistLow(mode)
 
 export const getNodeColor = (d: Node, mode: Mode): string => {
-  if (d.id === PROTAGONIST_HIGH) return mode === 'race' ? '#FF954D' : '#F17091'
-  if (d.id === getProtagonistLow(mode)) return mode === 'race' ? '#6897FF' : '#00B178'
-  if (mode === 'race') return d.race_ethnicity === 'white_asian' ? '#FF954D' : '#6897FF'
-  return d.ses === 'higher' ? '#F17091' : '#00B178'
+  if (d.id === PROTAGONIST_HIGH) return mode === 'race' ? '#FF9260' : '#FF8BDE'
+  if (d.id === getProtagonistLow(mode)) return mode === 'race' ? '#8BA4FF' : '#22D880'
+  if (mode === 'race') return d.race_ethnicity === 'white_asian' ? '#FF9260' : '#8BA4FF'
+  return d.ses === 'higher' ? '#FF8BDE' : '#22D880'
 }
 
 // Colors an edge by its source node's group instead of a flat grey — shared

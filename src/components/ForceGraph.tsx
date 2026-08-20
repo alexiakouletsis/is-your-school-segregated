@@ -36,10 +36,10 @@ interface Props {
   mode?: Mode
 }
 
-const SES_HIGH_COLOR = '#F17091'
-const SES_LOW_COLOR = '#00B178'
-const RACE_1_COLOR = '#FF954D'
-const RACE_2_COLOR = '#6897FF'
+const SES_HIGH_COLOR = '#FF8BDE'
+const SES_LOW_COLOR = '#22D880'
+const RACE_1_COLOR = '#FF9260'
+const RACE_2_COLOR = '#8BA4FF'
 const EDGE_COLOR = '#ccc'
 const HIGHLIGHTED_EDGE_COLOR = '#888'
 

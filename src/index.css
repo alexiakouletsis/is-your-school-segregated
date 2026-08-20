@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --color-high-ses: #F17091;
-  --color-low-ses: #00B178;
+  --color-high-ses: #FF8BDE;
+  --color-low-ses: #22D880;
   --color-bg: #FAF9F6;
-  --color-race-1: #FF954D;
-  --color-race-2: #6897FF;
+  --color-race-1: #FF9260;
+  --color-race-2: #8BA4FF;
 }
 
 html {

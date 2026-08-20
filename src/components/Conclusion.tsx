@@ -21,8 +21,8 @@ interface Dot {
   convergeDelay: number
 }
 
-const SES_COLORS = ['#F17091', '#F17091', '#00B178', '#00B178', '#F17091', '#00B178']
-const RACE_COLORS = ['#FF954D', '#FF954D', '#6897FF', '#6897FF', '#FF954D', '#6897FF']
+const SES_COLORS = ['#FF8BDE', '#FF8BDE', '#22D880', '#22D880', '#FF8BDE', '#22D880']
+const RACE_COLORS = ['#FF9260', '#FF9260', '#8BA4FF', '#8BA4FF', '#FF9260', '#8BA4FF']
 
 const CONVERGE_CENTER_X = 50
 const CONVERGE_CENTER_Y = 48

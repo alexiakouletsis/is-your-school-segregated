@@ -91,8 +91,8 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
 
   const highLabelText = mode === 'race' ? ' of students are white/asian' : ' of students are higher-SES'
   const lowLabelText = mode === 'race' ? ' of students are students of color' : ' of students are lower-SES'
-  const highColor = mode === 'race' ? '#FF954D' : '#F17091'
-  const lowColor = mode === 'race' ? '#6897FF' : '#00B178'
+  const highColor = mode === 'race' ? '#FF9260' : '#FF8BDE'
+  const lowColor = mode === 'race' ? '#8BA4FF' : '#22D880'
 
   const highSegments: Segment[] = [
     { text: `${highPct}%`, pulse: true },

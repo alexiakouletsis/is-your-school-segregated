@@ -54,10 +54,10 @@ const isProtagonist912 = (id: number, highId: number, lowId: number) =>
   id === highId || id === lowId
 
 const getNodeColor912 = (d: Node, mode: Mode, highId: number, lowId: number): string => {
-  if (d.id === highId) return mode === 'race' ? '#FF954D' : '#F17091'
-  if (d.id === lowId) return mode === 'race' ? '#6897FF' : '#00B178'
-  if (mode === 'race') return d.race_ethnicity === 'white_asian' ? '#FF954D' : '#6897FF'
-  return d.ses === 'higher' ? '#F17091' : '#00B178'
+  if (d.id === highId) return mode === 'race' ? '#FF9260' : '#FF8BDE'
+  if (d.id === lowId) return mode === 'race' ? '#8BA4FF' : '#22D880'
+  if (mode === 'race') return d.race_ethnicity === 'white_asian' ? '#FF9260' : '#8BA4FF'
+  return d.ses === 'higher' ? '#FF8BDE' : '#22D880'
 }
 
 // Same grouping getNodeColor912 uses for the non-protagonist coloring
@@ -79,8 +79,8 @@ const getFaceSrc912 = (d: Node, mode: Mode, highId: number): string => {
 // reads clearly, rather than a flat grey.
 const getEdgeColor912 = (d: Edge, mode: Mode): string => {
   const src = d.source as unknown as Node
-  if (mode === 'race') return src.race_ethnicity === 'white_asian' ? '#FF954D' : '#6897FF'
-  return src.ses === 'higher' ? '#F17091' : '#00B178'
+  if (mode === 'race') return src.race_ethnicity === 'white_asian' ? '#FF9260' : '#8BA4FF'
+  return src.ses === 'higher' ? '#FF8BDE' : '#22D880'
 }
 
 // This school's filteredFullNodes population (378/334/365/284 across

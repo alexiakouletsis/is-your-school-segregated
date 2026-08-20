@@ -5,7 +5,77 @@ import NavBar from './components/NavBar'
 
 export type Mode = 'ses' | 'race'
 
+// Every image the pre-curtain landing screen actually renders (both
+// mode variants, since mode can toggle later and this only needs to run
+// once) — the professor's "takes a bit of scrolling to see things change"
+// note traces to BlobCurtain.tsx measuring the pink/green dot images'
+// real rendered position via getBoundingClientRect(): if those are still
+// 0-size (not yet loaded) when the user starts interacting, the blob's
+// origin point is wrong until the image's load event fires and it
+// re-measures. Preloading these up front means that race can't happen —
+// by the time scrolling is possible, they're already loaded.
+const LANDING_ASSETS = [
+  '/assets/sparkle-sketch.svg',
+  '/assets/heart-sketch.svg',
+  '/assets/plane-sketch.svg',
+  '/assets/pencil-sketch.svg',
+  '/assets/butterfly-sketch.svg',
+  '/assets/stars-sketch.svg',
+  '/assets/apple-sketch.svg',
+  '/assets/pink-dot-on-i.svg',
+  '/assets/orange-dot-on-i.svg',
+  '/assets/green-dot-on-q.svg',
+  '/assets/blue-dot-on-q.svg',
+  '/assets/tap-icon.svg',
+  '/assets/down-scroll-arrow.svg',
+]
+
 function App() {
+  // Gates scrolling until the landing page's own assets (images + fonts)
+  // are actually ready — see LANDING_ASSETS above for why. Starts false;
+  // the effect below flips it true once everything's loaded, or after a
+  // 4s safety-net timeout regardless, so a slow/failed asset can never
+  // leave this stuck on a permanent loading screen.
+  const [assetsReady, setAssetsReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    const imagePromises = LANDING_ASSETS.map(src => new Promise<void>((resolve) => {
+      const img = new Image()
+      img.onload = () => resolve()
+      // Resolve on error too — a missing/broken asset shouldn't hang the
+      // whole page behind a permanent loading screen.
+      img.onerror = () => resolve()
+      img.src = src
+    }))
+    const fontsPromise = typeof document !== 'undefined' && document.fonts
+      ? document.fonts.ready
+      : Promise.resolve()
+    // Minimum display time for the loading screen, regardless of how fast
+    // assets actually load — an experiment to see whether just giving
+    // everything (React's own initial render/layout included, not just
+    // network requests) more time to settle before scrolling is possible
+    // resolves the "takes a bit of scrolling" issue, since the asset-only
+    // wait alone didn't.
+    const minDelayPromise = new Promise<void>(resolve => setTimeout(resolve, 3000))
+    const readyPromise = Promise.all([...imagePromises, fontsPromise, minDelayPromise])
+    const timeoutPromise = new Promise<void>(resolve => setTimeout(resolve, 8000))
+    Promise.race([
+      readyPromise,
+      timeoutPromise,
+    ]).then(() => {
+      if (!cancelled) setAssetsReady(true)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  // Actually prevents scrolling during the loading screen (not just visual
+  // cover) — otherwise a fast/impatient scroll attempt during that window
+  // could still race ahead of the images finishing.
+  useEffect(() => {
+    document.body.style.overflow = assetsReady ? '' : 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [assetsReady])
+
   const [curtainDone, setCurtainDone] = useState(false)
   // Forces a full unmount/remount of <Hero> (and everything inside it,
   // including BlobCurtain) on restart — bumped inside
@@ -357,11 +427,66 @@ function App() {
 
   return (
     <main>
+      {!assetsReady && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 999999,
+          backgroundColor: 'var(--color-bg)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '1.5rem',
+        }}>
+          <style>{`
+            @keyframes loadingDotBounce {
+              0%, 80%, 100% { transform: translateY(0); }
+              40% { transform: translateY(-0.55em); }
+            }
+          `}</style>
+          {/* A tall icon sitting above shorter text pulls the block's true
+              geometric center higher than where the text alone visually
+              reads as "centered" — nudging the whole stack up compensates
+              for that, rather than relying on plain center-alignment. */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', transform: 'translateY(-11%)' }}>
+            <img
+              src="/favicon.svg"
+              style={{
+                width: 'clamp(7rem, 23vw, 12rem)',
+                height: 'clamp(7rem, 23vw, 12rem)',
+              }}
+            />
+            <span style={{
+              fontFamily: "'Gaegu', cursive",
+              fontSize: 'clamp(1.8rem, 6vw, 3rem)',
+              color: '#111',
+              display: 'flex',
+            }}>
+              loading
+              <span style={{ display: 'inline-flex' }}>
+                {[0, 1, 2].map(i => (
+                  <span
+                    key={i}
+                    style={{
+                      display: 'inline-block',
+                      animation: 'loadingDotBounce 1s ease-in-out infinite',
+                      animationDelay: `${i * 0.15}s`,
+                    }}
+                  >
+                    .
+                  </span>
+                ))}
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
       <div style={{
         position: 'fixed',
         top: 0, left: 0,
         width: '100%',
-        height: '1.5px',
+        height: '2px',
         backgroundColor: 'transparent',
         zIndex: 99999,
         pointerEvents: 'none',
@@ -388,11 +513,10 @@ function App() {
           setTypingDone(true)
         }}
         onAdvance={() => {
-          // Originally only ran for the intro's own tap-to-advance flow on
-          // mobile — now also the target for a direct click on the
-          // intro's scroll cue on desktop, so the isMobileDevice() gate
-          // that used to no-op it there is gone. The scroll-target math
-          // itself was already platform-agnostic.
+          // The intro's own last line already shows a "tap" cue, so we don't
+          // need a separate "tap to continue" overlay prompt here — the
+          // intro itself (once done) calls this directly when tapped.
+          if (!isMobileDevice()) return
 
           // v≈0.35 on ArticleSection's ["start end","end end"] scroll range —
           // just past the sticky-engage point, keeping the title in view at

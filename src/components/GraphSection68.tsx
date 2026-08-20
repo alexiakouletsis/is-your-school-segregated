@@ -69,10 +69,10 @@ const ALT_PROTAGONIST_LOW = 1
 // versions only ever check against the ALT_PROTAGONIST_* constants above.
 const isAltProtagonist = (id: number) => id === ALT_PROTAGONIST_HIGH || id === ALT_PROTAGONIST_LOW
 const getAltNodeColor = (d: Node, mode: Mode): string => {
-  if (d.id === ALT_PROTAGONIST_HIGH) return mode === 'race' ? '#FF954D' : '#F17091'
-  if (d.id === ALT_PROTAGONIST_LOW) return mode === 'race' ? '#6897FF' : '#00B178'
-  if (mode === 'race') return d.race_ethnicity === 'white_asian' ? '#FF954D' : '#6897FF'
-  return d.ses === 'higher' ? '#F17091' : '#00B178'
+  if (d.id === ALT_PROTAGONIST_HIGH) return mode === 'race' ? '#FF9260' : '#FF8BDE'
+  if (d.id === ALT_PROTAGONIST_LOW) return mode === 'race' ? '#8BA4FF' : '#22D880'
+  if (mode === 'race') return d.race_ethnicity === 'white_asian' ? '#FF9260' : '#8BA4FF'
+  return d.ses === 'higher' ? '#FF8BDE' : '#22D880'
 }
 // Sadder face variants for the alt-school steps, to visually underscore
 // the "this is what it looks like when tracking is bad" framing.
@@ -89,8 +89,8 @@ const getAltFaceSrc = (d: Node, mode: Mode): string => {
 // Alt-school-only; step 1's edges stay grey/unchanged.
 const getAltEdgeColor = (d: Edge, mode: Mode): string => {
   const src = d.source as unknown as Node
-  if (mode === 'race') return src.race_ethnicity === 'white_asian' ? '#FF954D' : '#6897FF'
-  return src.ses === 'higher' ? '#F17091' : '#00B178'
+  if (mode === 'race') return src.race_ethnicity === 'white_asian' ? '#FF9260' : '#8BA4FF'
+  return src.ses === 'higher' ? '#FF8BDE' : '#22D880'
 }
 
 // Alt-school steps now use the same full link+charge+collision physics as
@@ -688,8 +688,8 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
     setSkipTypingSignal(s => s + 1)
   }
 
-  const bubbleColorHigh = mode === 'race' ? '#FF954D' : '#F17091'
-  const bubbleColorLow = mode === 'race' ? '#6897FF' : '#00B178'
+  const bubbleColorHigh = mode === 'race' ? '#FF9260' : '#FF8BDE'
+  const bubbleColorLow = mode === 'race' ? '#8BA4FF' : '#22D880'
 
   // Gates NodeStats' entrance typing: true once step 1's own notice text
   // ("This is what a middle school...") has finished typing, or trivially
