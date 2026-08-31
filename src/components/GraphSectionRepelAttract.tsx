@@ -290,10 +290,20 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
   // position, no async recompute lag involved. Repel's threshold cut
   // down per earlier feedback that it was way too sticky; attract's
   // stays generous.
-  const REPEL_BLOCK_DELTA = 300
-  const ATTRACT_BLOCK_DELTA = 500
+  const REPEL_BLOCK_DELTA = 550
+  const ATTRACT_BLOCK_DELTA = 550
   const repelDeltaAccumRef = useRef(0)
   const attractDeltaAccumRef = useRef(0)
+  // Tracks the previous wheel event's own v so a single aggressive scroll
+  // that jumps clean over an entire zone in one tick can be caught and
+  // corrected, rather than only ever checking whichever zone the jump
+  // happened to land in. Without this, a fast-enough flick could move v
+  // from before D_REPEL_REACHED to past D_ATTRACT_REACHED within one
+  // wheel event — the very first time this handler ever sees it, v is
+  // already in attract's own zone, so repel's resistance check never runs
+  // at all, and the same can happen scrolling far enough past attract in
+  // one event too.
+  const lastVRef = useRef(0)
   // Some browsers (Safari with trackpad momentum, in particular) won't let
   // JS cancel an already-started INERTIAL scroll via preventDefault, no
   // matter how the listener is registered — the deltaY events keep coming
@@ -310,6 +320,15 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
     if (isMobile) return
     const handleWheel = (e: WheelEvent) => {
       if (!containerRef.current || e.ctrlKey) return
+      const rect = containerRef.current.getBoundingClientRect()
+      if (rect.top > 0 || rect.bottom <= 0) return
+      // Same "start start" -> "end start" mapping this component's own
+      // useScroll target/offset uses, computed straight from the live
+      // rect rather than read from scrollYProgress.
+      const v = Math.min(1, Math.max(0, -rect.top / rect.height))
+      const prevV = lastVRef.current
+      lastVRef.current = v
+
       if (e.deltaY <= 0) {
         // Scrolling backward resets both — re-entering a zone forward
         // again always requires a fresh push, same as
@@ -319,12 +338,36 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
         lockedScrollYRef.current = null
         return
       }
-      const rect = containerRef.current.getBoundingClientRect()
-      if (rect.top > 0 || rect.bottom <= 0) return
-      // Same "start start" -> "end start" mapping this component's own
-      // useScroll target/offset uses, computed straight from the live
-      // rect rather than read from scrollYProgress.
-      const v = Math.min(1, Math.max(0, -rect.top / rect.height))
+
+      // A fixed property of the container's position in the document —
+      // doesn't change as the page scrolls, so this is safe to compute
+      // fresh each time and reuse for either correction below.
+      const containerTopAbsolute = window.scrollY + rect.top
+
+      // Caught a jump that skipped the entire repel zone in one go
+      // (started before it, landed at or past attract) — snap back to
+      // right at repel's own threshold instead of letting attract's
+      // resistance check run against wherever the jump actually landed.
+      if (prevV < D_REPEL_REACHED && v >= D_ATTRACT_REACHED) {
+        const targetScrollY = containerTopAbsolute + D_REPEL_REACHED * rect.height
+        window.scrollTo(0, targetScrollY)
+        lockedScrollYRef.current = targetScrollY
+        repelDeltaAccumRef.current = 0
+        e.preventDefault()
+        return
+      }
+      // Same idea for overshooting well past attract's own threshold in
+      // one jump, starting from before it — snap back to right at
+      // attract's threshold so its resistance can't be skipped either.
+      if (prevV < D_ATTRACT_REACHED && v > D_ATTRACT_REACHED + 0.05) {
+        const targetScrollY = containerTopAbsolute + D_ATTRACT_REACHED * rect.height
+        window.scrollTo(0, targetScrollY)
+        lockedScrollYRef.current = targetScrollY
+        attractDeltaAccumRef.current = 0
+        e.preventDefault()
+        return
+      }
+
       if (v >= D_REPEL_REACHED && v < D_ATTRACT_REACHED) {
         repelDeltaAccumRef.current += e.deltaY
         if (repelDeltaAccumRef.current < REPEL_BLOCK_DELTA) {
