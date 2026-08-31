@@ -710,7 +710,11 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       .attr('x', d => (d.x ?? cx) - faceSize / 2).attr('y', d => (d.y ?? cy) - faceSize / 2)
       .attr('cursor', 'pointer').attr('opacity', 0).transition().duration(500).attr('opacity', 1)
 
-    setupNodeInteractions(nodeG, simulation, mode)
+    // Hover/tap highlighting and drag are unnecessary during the dialogue
+    // step — its two nodes are placeholder dummies, not real data, so
+    // there's nothing meaningful to highlight/dim toward or show stats
+    // about.
+    if (currentStep !== 0) setupNodeInteractions(nodeG, simulation, mode)
 
     return () => {
       simulation.stop()
@@ -952,6 +956,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
             // still runs in the same gesture.
             if (currentStep >= 1) setSkipTypingSignal(s => s + 1)
             if (!isMobile) return
+            if (currentStep === 0) return
             const target = e.target as Element
             if (target.tagName === 'circle' || target.tagName === 'image') {
               // Tapped an actual node — show/toggle its tooltip instead of

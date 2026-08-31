@@ -1212,7 +1212,11 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
         exit => exit.remove()
       )
 
-    setupNodeInteractions(nodeG, simulation, mode)
+    // Hover/tap highlighting and drag are unnecessary during the dialogue
+    // step — its two nodes are placeholder dummies, not real data, so
+    // there's nothing meaningful to highlight/dim toward or show stats
+    // about.
+    if (currentStep !== 0) setupNodeInteractions(nodeG, simulation, mode)
     return () => {
       simulation.stop()
       clearTimeout(zoomTimer)
@@ -1423,6 +1427,7 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
             // still runs in the same gesture.
             setSkipTypingSignal(s => s + 1)
             if (!isMobile) return
+            if (currentStep === 0) return
             const target = e.target as Element
             if (target.tagName === 'circle' || target.tagName === 'image') {
               const datum = d3.select(target as SVGCircleElement | SVGImageElement).datum() as Node | undefined

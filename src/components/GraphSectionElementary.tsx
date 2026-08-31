@@ -688,7 +688,11 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
       .attr('x', d => (d.x ?? cx) - faceSize / 2).attr('y', d => (d.y ?? cy) - faceSize / 2)
       .attr('cursor', 'pointer').attr('opacity', 0).transition().duration(500).attr('opacity', 1)
 
-    setupNodeInteractions(nodeG, simulation, mode)
+    // Hover/tap highlighting and drag are unnecessary during the dialogue
+    // step — its two nodes are placeholder dummies, not real data, so
+    // there's nothing meaningful to highlight/dim toward or show stats
+    // about.
+    if (currentStep !== 0) setupNodeInteractions(nodeG, simulation, mode)
 
     nodeG.selectAll<SVGCircleElement, Node>('circle.regular-node').attr('opacity', 1)
     linkG.selectAll<SVGLineElement, Edge>('line').attr('stroke', d => getEdgeColor(d, mode)).attr('stroke-opacity', 0.2)
@@ -835,6 +839,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               return
             }
             if (!isMobile) return
+            if (currentStep === 0) return
             if (!isTextStep) {
               const target = e.target as Element
               if (target.tagName === 'circle' || target.tagName === 'image') {
