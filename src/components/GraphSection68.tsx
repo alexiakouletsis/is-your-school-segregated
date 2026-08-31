@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
-import { motion, AnimatePresence, useScroll, useMotionValue, animate } from 'framer-motion'
+import { motion, AnimatePresence, useScroll, useMotionValue } from 'framer-motion'
 import { useGraphSection } from '../hooks/useGraphSection'
 import NodeStats from './NodeStats'
 import type { Mode } from '../App'

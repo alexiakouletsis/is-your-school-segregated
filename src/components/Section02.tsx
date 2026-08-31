@@ -36,7 +36,7 @@ function generateDots(mode: Mode, count: number): Dot[] {
   return dots
 }
 
-export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal?: number }) {
+export default function Section02({ mode, skipSignal: _skipSignal }: { mode: Mode; skipSignal?: number }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
   // Measured via window.innerWidth rather than trusted to the CSS `100vw`

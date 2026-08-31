@@ -22,23 +22,10 @@ const CITATION_BEFORE = "The "
 const CITATION_LINK = "Plural Connections Group"
 const CITATION_AFTER = " has partnered with a public school district in the Southeastern United States to collect data on 75 schools (varying from grades k-12) about classes that students share with one another. Classes can not only affect a student's academic breadth, but also the extent of their friendship networks. Let's take a look at this data in the context of "
 
-interface Node {
-  id: number
-  ses: string
-  race_ethnicity: string
-  courses: string
-  grade_level: number
-  x?: number
-  y?: number
-}
-
 interface Props {
   onAnimDone?: () => void
   onOverlaySettled?: (scrollY: number) => void
   onAnimReset?: () => void
-  onPart2AnimDone?: () => void
-  onPart2OverlaySettled?: (scrollY: number) => void
-  onPart2AnimReset?: () => void
   onSection03Part2AnimDone?: () => void
   onSection03Part2OverlaySettled?: (scrollY: number) => void
   onSection03Part2AnimReset?: () => void
@@ -55,7 +42,6 @@ interface Props {
   // own inline Section 01 paragraph; the rest are forwarded as-is to
   // their respective child below.
   skipSection01Signal?: number
-  skipPart2Signal?: number
   skipSection02Signal?: number
   skipSection03IntroSignal?: number
   skipSection03Part2Signal?: number
@@ -67,14 +53,10 @@ export default function ArticleSection({
   onToggleModeAndScrollTop = () => {},
   onRevealed = () => {},
   graphResetSignal = 0,
-  skipPart2Signal,
   skipSection02Signal,
   skipSection03IntroSignal,
   skipSection03Part2Signal,
   mode,
-  onPart2AnimDone = () => {},
-  onPart2OverlaySettled = () => {},
-  onPart2AnimReset = () => {},
   onSection03Part2AnimDone = () => {},
   onSection03Part2OverlaySettled = () => {},
   onSection03Part2AnimReset = () => {},

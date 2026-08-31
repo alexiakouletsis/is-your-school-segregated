@@ -11,7 +11,6 @@ const SES_PARA2_AFTER1 = " is only taking honors and AP classes. After always be
 const SES_PARA2_GREEN = "green"
 const SES_PARA2_AFTER2 = " remains on that pathway. "
 const SES_PARA2_BIG = "The two never share a class again."
-const SES_PARA2_FULL = SES_PARA2_BEFORE + SES_PARA2_PINK + SES_PARA2_AFTER1 + SES_PARA2_GREEN + SES_PARA2_AFTER2 + SES_PARA2_BIG
 
 const RACE_PARA2_BEFORE = "Our two students are now on completely different pathways. Being set early on an advanced trajectory, "
 const RACE_PARA2_ORANGE = "orange"
@@ -19,7 +18,6 @@ const RACE_PARA2_AFTER1 = " is only taking honors and AP classes. After always b
 const RACE_PARA2_BLUE = "blue"
 const RACE_PARA2_AFTER2 = " remains on that pathway. "
 const RACE_PARA2_BIG = "The two never share a class again."
-const RACE_PARA2_FULL = RACE_PARA2_BEFORE + RACE_PARA2_ORANGE + RACE_PARA2_AFTER1 + RACE_PARA2_BLUE + RACE_PARA2_AFTER2 + RACE_PARA2_BIG
 
 interface Props {
   onAnimDone: () => void
@@ -32,13 +30,11 @@ interface Props {
   mode: Mode
 }
 
-export default function Section03Part2({ onAnimDone, onOverlaySettled, skipSignal, mode }: Props) {
+export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverlaySettled, skipSignal, mode }: Props) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   const [settled, setSettled] = useState(false)
   const hasSettledRef = useRef(false)
-
-  const PARA2_FULL = mode === 'race' ? RACE_PARA2_FULL : SES_PARA2_FULL
 
   // Measures the container's own TOP edge against fixed points in the
   // viewport (80% down -> 35% down), rather than the container's start vs
