@@ -46,6 +46,24 @@ body {
   50% { transform: rotate(3deg); }
 }
 
+/* Stronger stop-motion jitter — 4 distinct poses (not a smooth loop),
+   each with a small translate/rotate/scale plus a faint brightness/
+   contrast flicker, giving a hand-drawn, slightly-off-model feel like
+   consecutive frames of hand-drawn animation rather than a wobble.
+   Used on Hero's sketch SVGs (sparkle, heart, plane, pencil, stars,
+   apple, butterfly) via steps(1) — each keyframe segment jumps directly
+   to its target pose rather than interpolating through it, which is
+   what actually produces the stop-motion look instead of a smooth
+   oscillation. See .subtle-stop-motion below for the lighter version
+   used elsewhere (Conclusion's signature, the intro's spark/arrows). */
+@keyframes stopMotionJitterStrong {
+  0%   { transform: translate(0, 0) rotate(0deg) scale(1); filter: brightness(1) contrast(1); }
+  25%  { transform: translate(1.3px, -1.6px) rotate(-2.4deg) scale(1.018); filter: brightness(0.95) contrast(1.06); }
+  50%  { transform: translate(-1.6px, 1.2px) rotate(1.8deg) scale(0.984); filter: brightness(1.05) contrast(0.95); }
+  75%  { transform: translate(1.2px, 1.5px) rotate(-1.6deg) scale(1.012); filter: brightness(0.965) contrast(1.045); }
+  100% { transform: translate(0, 0) rotate(0deg) scale(1); filter: brightness(1) contrast(1); }
+}
+
 /* Mobile only — this combined with the sticky/transform panels elsewhere
    in the app appears to trigger a WebKit bug on desktop Safari that breaks
    scrolling entirely (confirmed: removing it fixed desktop Safari). Scoped

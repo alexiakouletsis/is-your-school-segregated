@@ -70,7 +70,7 @@ export default function ArticleSection({
           any other element here, unlike the toggle, which stays fixed.
           Positioned to sit visually to the left of the toggle only on
           initial view, before any scrolling happens. */}
-      <img src="/assets/spark.svg" style={{
+      <img src="/assets/spark.svg" className="subtle-stop-motion" style={{
         position: 'absolute',
         top: isMobile ? '1rem' : '1.5rem',
         right: isMobile ? '12.5rem' : '18.25rem',
@@ -175,12 +175,14 @@ export default function ArticleSection({
             }}>
               Click this toggle throughout your experience to view this data in a different context.
             </span>
-            <img src="/assets/rightuparrow.svg" style={{
-              width: isMobile ? 'clamp(2.6rem, 9vw, 3.6rem)' : 'clamp(3.6rem, 5.5vw, 5.2rem)',
-              height: 'auto', flexShrink: 0,
-              transform: isMobile ? 'translateX(-0.8rem)' : 'none',
-              position: 'relative', top: isMobile ? '-0.2rem' : '-0.5rem',
-            }} />
+            <div className="subtle-stop-motion" style={{ flexShrink: 0, display: 'inline-block' }}>
+              <img src="/assets/rightuparrow.svg" style={{
+                width: isMobile ? 'clamp(2.6rem, 9vw, 3.6rem)' : 'clamp(3.6rem, 5.5vw, 5.2rem)',
+                height: 'auto', flexShrink: 0,
+                transform: isMobile ? 'translateX(-0.8rem)' : 'none',
+                position: 'relative', top: isMobile ? '-0.2rem' : '-0.5rem',
+              }} />
+            </div>
           </div>
         </div>
 
@@ -226,7 +228,7 @@ export default function ArticleSection({
             section) so it stays anchored to the intro area regardless of
             how much content follows. */}
         {!isMobile && (
-          <img src="/assets/bigarrow.svg" style={{
+          <img src="/assets/bigarrow.svg" className="subtle-stop-motion" style={{
             position: 'absolute',
             bottom: '-34%',
             left: '10%',
