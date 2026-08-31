@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { Mode } from '../App'
-import ToggleSwitch from './ToggleSwitch'
 
 interface Dot {
   id: number
@@ -81,15 +80,22 @@ const PARA_ACCENT = "Genuine connection"
 const PARA_AFTER = " starts by sharing a space."
 const PARA_FULL = PARA_BEFORE + PARA_ACCENT + PARA_AFTER
 
-const TOGGLE_SENTENCE = "Toggle here to view this entire article again in the context of race rather than socio-economic status. Take note of the similar patterns! :)"
-
-const INFO_BEFORE = "For more information similar subjects, click here to see "
+const INFO_BEFORE = "For more information similar subjects, click "
+const INFO_HERE = "here"
+const INFO_MIDDLE = " to see "
 const INFO_LINK = "Plural Connection Group's other research projects"
 const INFO_AFTER = "."
-const INFO_FULL = INFO_BEFORE + INFO_LINK + INFO_AFTER
+const INFO_FULL = INFO_BEFORE + INFO_HERE + INFO_MIDDLE + INFO_LINK + INFO_AFTER
 
 interface Props {
   mode: Mode
+  // No longer used internally — the toggle this used to wire up (see the
+  // removed toggle block below) is gone now that the persistent top-right
+  // toggle covers the same "restart in the other mode" need from the very
+  // start of the article. Kept in the Props interface rather than removed
+  // outright, since removing it here would just move the same "prop
+  // doesn't exist" type error to whatever still passes it at the call
+  // site — that cleanup belongs there, not here.
   onToggleModeAndScrollTop?: () => void
   // Bumped by App.tsx's skipAllIntroAnimations right before NavBar jumps
   // to a section — see that comment. Forces this section's skipAll to
@@ -99,9 +105,15 @@ interface Props {
   // wired the same way as every other freeze-gated section for
   // consistency and in case that changes.
   skipSignal?: number
+  // Fires once (the instant contentVisible flips true — i.e. the dot
+  // condense-then-explode transition has actually cleared and the
+  // conclusion's own content is visible), not on every re-render. Drives
+  // NavBar's auto-reveal in App.tsx — replaces the old mechanism that used
+  // to key off Conclusion's own since-removed toggle button.
+  onRevealed?: () => void
 }
 
-export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, skipSignal }: Props) {
+export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleModeAndScrollTop, skipSignal, onRevealed }: Props) {
   const isMobile = useIsMobile()
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -133,21 +145,22 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
   const explodeRafRef = useRef<number | null>(null)
   const explodeStartRef = useRef<number | null>(null)
 
-  // --- body content sequence: title -> paragraph -> toggle -> signature+info ---
+  // --- body content sequence: title -> paragraph -> signature+info ---
   const [contentVisible, setContentVisible] = useState(false)
-  const [paraText, setParaText] = useState('')
-  const [paraDone, setParaDone] = useState(false)
-  const [toggleVisible, setToggleVisible] = useState(false)
-  const [signatureVisible, setSignatureVisible] = useState(false)
-  const [infoText, setInfoText] = useState('')
   const [infoDone, setInfoDone] = useState(false)
   const [skipped, setSkipped] = useState(false)
   const [sigHovered, setSigHovered] = useState(false)
   const contentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const paraInterval = useRef<ReturnType<typeof setInterval> | null>(null)
-  const toggleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const infoInterval = useRef<ReturnType<typeof setInterval> | null>(null)
-  const sigInfoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Guards onRevealed so it only ever fires once per session, regardless
+  // of which path (the normal scroll-triggered reveal, or a skip/nav-jump)
+  // triggers contentVisible, and regardless of the user later scrolling
+  // back up and re-triggering the sequence.
+  const hasFiredRevealedRef = useRef(false)
+  const fireRevealed = useCallback(() => {
+    if (hasFiredRevealedRef.current) return
+    hasFiredRevealedRef.current = true
+    onRevealed?.()
+  }, [onRevealed])
   // Local scroll lock (same technique Section02 already uses for its own
   // self-contained typed sequence) — NOT App.tsx's wheel-lock system. This
   // keeps the whole transition + content sequence as one self-contained
@@ -157,6 +170,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
   // scrolling, instead of right as the burst clears).
   const lockScrollYRef = useRef<number | null>(null)
   const [sequenceStarted, setSequenceStarted] = useState(false)
+  // Measures the phase svgs row's actual rendered position so mobile can
 
   useEffect(() => {
     const measure = () => {
@@ -200,21 +214,12 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
 
   const resetContent = useCallback(() => {
     setContentVisible(false)
-    setParaText('')
-    setParaDone(false)
-    setToggleVisible(false)
-    setSignatureVisible(false)
-    setInfoText('')
     setInfoDone(false)
     setSkipped(false)
     setSigHovered(false)
     setSequenceStarted(false)
     lockScrollYRef.current = null
     if (contentTimeoutRef.current) clearTimeout(contentTimeoutRef.current)
-    clearInterval(paraInterval.current!)
-    if (toggleTimeoutRef.current) clearTimeout(toggleTimeoutRef.current)
-    clearInterval(infoInterval.current!)
-    if (sigInfoTimeoutRef.current) clearTimeout(sigInfoTimeoutRef.current)
   }, [])
 
   useEffect(() => {
@@ -226,11 +231,11 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
     resetContent()
   }, [isMobile])
 
-  // Mode changes (via the nav bar or 'R' key) no longer reset/retype the
-  // whole sequence — only the "Genuine connection" accent word reanimates
-  // (see its key={mode} in renderPara below), since paraText/toggleVisible/
-  // etc. don't need to be touched at all: their colors (where relevant)
-  // are already recomputed live from `mode` on every render regardless.
+  // Mode changes (via the persistent toggle or 'R' key) don't reset/retype
+  // anything — only the "Genuine connection" accent word reanimates (see
+  // its key={mode} in renderPara below); everything else's colors (where
+  // relevant) are already recomputed live from `mode` on every render
+  // regardless.
 
   useEffect(() => {
     const colors = mode === 'race' ? RACE_COLORS : SES_COLORS
@@ -252,65 +257,23 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
     return 1
   }
 
-  // paragraph typing, once the content block has finished fading in
+  // No more staggered typing/fade sequence — everything shows in full as
+  // soon as the content block itself fades in. infoDone still exists
+  // since the desktop scroll-lock effect below reads it as "the reveal is
+  // done, safe to unlock" — it just no longer waits on typing to get
+  // there.
   useEffect(() => {
     if (!contentVisible || skipped) return
-    const t = setTimeout(() => {
-      paraInterval.current = setInterval(() => {
-        setParaText(prev => {
-          const next = PARA_FULL.slice(0, prev.length + 1)
-          if (next.length === PARA_FULL.length) {
-            clearInterval(paraInterval.current!)
-            setParaDone(true)
-          }
-          return next
-        })
-      }, 22)
-    }, 400)
-    return () => clearTimeout(t)
+    setInfoDone(true)
   }, [contentVisible, skipped])
-
-  useEffect(() => {
-    if (!paraDone || skipped) return
-    toggleTimeoutRef.current = setTimeout(() => setToggleVisible(true), 500)
-    return () => { if (toggleTimeoutRef.current) clearTimeout(toggleTimeoutRef.current) }
-  }, [paraDone, skipped])
-
-  const startSignatureAndInfo = useCallback(() => {
-    setSignatureVisible(true)
-    sigInfoTimeoutRef.current = setTimeout(() => {
-      infoInterval.current = setInterval(() => {
-        setInfoText(prev => {
-          const next = INFO_FULL.slice(0, prev.length + 1)
-          if (next.length === INFO_FULL.length) {
-            clearInterval(infoInterval.current!)
-            setInfoDone(true)
-          }
-          return next
-        })
-      }, 22)
-    }, 400)
-  }, [])
-
-  const handleToggleFadeComplete = () => {
-    if (toggleVisible && !skipped) startSignatureAndInfo()
-  }
 
   const skipAll = useCallback(() => {
     if (skipped || infoDone) return
     setSkipped(true)
     setContentVisible(true)
-    clearInterval(paraInterval.current!)
-    clearInterval(infoInterval.current!)
-    if (sigInfoTimeoutRef.current) clearTimeout(sigInfoTimeoutRef.current)
-    if (toggleTimeoutRef.current) clearTimeout(toggleTimeoutRef.current)
-    setParaText(PARA_FULL)
-    setParaDone(true)
-    setToggleVisible(true)
-    setSignatureVisible(true)
-    setInfoText(INFO_FULL)
     setInfoDone(true)
-  }, [skipped, infoDone])
+    fireRevealed()
+  }, [skipped, infoDone, fireRevealed])
 
   // External trigger for the same skip a click already does — see
   // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
@@ -499,7 +462,10 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
         // right in place. No separate scroll-linked threshold needed.
         lockScrollYRef.current = window.scrollY
         setSequenceStarted(true)
-        contentTimeoutRef.current = setTimeout(() => setContentVisible(true), CONTENT_DELAY_MS)
+        contentTimeoutRef.current = setTimeout(() => {
+          setContentVisible(true)
+          fireRevealed()
+        }, CONTENT_DELAY_MS)
       }
     }
 
@@ -554,7 +520,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
           // one part of the paragraph that's meant to visibly reanimate on
           // a mode switch. Everything else (before/after text, the rest of
           // the sequence) is untouched since it's not wrapped this way.
-          <span key={mode} className="accent-reanimate" style={{ display: 'inline-block' }}>
+          <span key={mode} className="accent-reanimate" style={{ display: 'inline-block', backgroundColor: 'rgba(253, 244, 203, 0.5)', borderRadius: '3px', padding: '0 0.15em' }}>
             {renderAlternating(accentTyped, highColor, lowColor)}
           </span>
         )}
@@ -563,31 +529,37 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
     )
   }
 
-  const infoLinkStart = INFO_BEFORE.length
+  const infoHereStart = INFO_BEFORE.length
+  const infoHereEnd = infoHereStart + INFO_HERE.length
+  const infoLinkStart = infoHereEnd + INFO_MIDDLE.length
   const infoLinkEnd = infoLinkStart + INFO_LINK.length
   const renderInfo = () => {
-    const before = infoText.slice(0, Math.min(infoText.length, infoLinkStart))
-    const link = infoText.slice(infoLinkStart, Math.min(infoText.length, infoLinkEnd))
-    const after = infoText.slice(infoLinkEnd)
+    const before = INFO_FULL.slice(0, infoHereStart)
+    const here = INFO_FULL.slice(infoHereStart, infoHereEnd)
+    const middle = INFO_FULL.slice(infoHereEnd, infoLinkStart)
+    const link = INFO_FULL.slice(infoLinkStart, infoLinkEnd)
+    const after = INFO_FULL.slice(infoLinkEnd)
     return (
       <>
         {before}
-        {link && (
-          <a
-            href="https://www.pluralconnections.org/projects"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="pcg-link"
-            onClick={(e) => e.stopPropagation()}
-            style={{ color: '#9E2591', textDecoration: 'none' }}
-          >
-            {link}
-          </a>
-        )}
+        <a
+          href="https://www.pluralconnections.org/projects"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="pcg-link"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            color: '#9E2591',
+            textDecoration: 'none',
+            fontWeight: 700,
+            fontSize: '1.08em',
+          }}
+        >
+          {here}
+        </a>
+        {middle}
+        {link}
         {after}
-        {infoText.length > 0 && infoText.length < INFO_FULL.length && (
-          <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-        )}
       </>
     )
   }
@@ -679,7 +651,22 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'flex-start',
-            overflowY: 'auto',
+            // Mobile: no independent scroll container here — this was
+            // very likely capturing touch-scroll gestures meant for the
+            // outer page scroll instead (a nested overflow:auto region,
+            // sitting inside a parent that already clips via its own
+            // overflow:hidden), especially once content got tall enough
+            // to actually need it, which the newer, larger phase svgs
+            // made more likely. That read as the page being "frozen" —
+            // scrolling within a container with nowhere further to go,
+            // rather than the outer page ever actually moving. The
+            // parent panel's own overflow:hidden plus its taller mobile
+            // buffer height (see panelRef above) now does the clipping
+            // instead, without creating a second scrollable region.
+            // Desktop keeps overflowY:auto — wheel/trackpad input over a
+            // nested scroll region doesn't have the same
+            // gesture-capture/frozen-feeling failure mode touch does.
+            overflowY: isMobile ? 'visible' : 'auto',
             padding: isMobile ? '7.5rem 1.5rem 2.5rem 1.5rem' : '7.5rem 3rem 3rem 3rem',
             gap: isMobile ? '2.2rem' : '3.2rem',
             pointerEvents: contentVisible ? 'auto' : 'none',
@@ -701,17 +688,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
             position: 'relative', width: '100%', maxWidth: '950px', flexShrink: 0,
             marginBottom: isMobile ? 0 : '1.4rem',
             marginTop: isMobile ? 0 : '-0.35rem',
-          }}>            <p aria-hidden="true" style={{
-              fontFamily: "'Kiwi Maru', serif",
-              fontSize: isMobile ? 'clamp(0.75rem, 3vw, 0.9rem)' : 'clamp(1.05rem, 1.9vw, 1.35rem)',
-              lineHeight: 1.8,
-              width: '100%',
-              textAlign: 'center',
-              margin: 0,
-              visibility: 'hidden',
-            }}>
-              {renderPara(PARA_FULL)}
-            </p>
+          }}>
             <p style={{
               fontFamily: "'Kiwi Maru', serif",
               color: '#111',
@@ -720,93 +697,129 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop = () => {}, 
               width: '100%',
               textAlign: 'center',
               margin: 0,
-              position: 'absolute',
-              top: 0, left: 0, right: 0,
             }}>
-              {renderPara(paraText)}
-              {paraText.length > 0 && paraText.length < PARA_FULL.length && (
-                <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-              )}
+              {renderPara(PARA_FULL)}
             </p>
           </div>
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: toggleVisible ? 1 : 0 }}
-            transition={{ duration: 0.7 }}
-            onAnimationComplete={handleToggleFadeComplete}
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              gap: '1rem', width: '100%', maxWidth: '700px', flexShrink: 0,
-              marginTop: isMobile ? 0 : '-1.2rem',
-            }}
-          >
-            <p style={{
-              fontFamily: "'Kiwi Maru', serif",
-              fontStyle: 'italic',
-              fontSize: isMobile ? 'clamp(0.62rem, 2.5vw, 0.75rem)' : 'clamp(0.68rem, 1vw, 0.82rem)',
-              color: '#111', lineHeight: 1.55, textAlign: 'center', margin: 0,
-            }}>
-              {TOGGLE_SENTENCE}
-            </p>
-            <ToggleSwitch mode={mode} onToggle={onToggleModeAndScrollTop} />
-          </motion.div>
+          {/* The toggle sentence + ToggleSwitch used to sit here — removed
+              since the persistent top-right toggle (added to the article
+              from the very start) makes this "restart in the other mode"
+              affordance redundant. */}
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: signatureVisible ? 1 : 0 }}
-            transition={{ duration: 0.7 }}
+          <div
             style={{
               display: 'flex',
-              // Mobile: text above, signature below (reversed from source
-              // order via column-reverse, rather than swapping the JSX
-              // itself, so desktop's row layout/order is untouched).
-              flexDirection: isMobile ? 'column-reverse' : 'row',
-              alignItems: 'center', justifyContent: 'center',
-              gap: isMobile ? '0.7rem' : '1.4rem',
+              // Source order is [signature, info text] — desktop reads
+              // this as a row (signature left, text right); mobile now
+              // uses plain 'column' so it reads top-to-bottom in that
+              // same source order (signature above, text below) — this
+              // used to be column-reverse (text above, signature below)
+              // before the order was swapped.
+              flexDirection: isMobile ? 'column' : 'row',
+              alignItems: isMobile ? 'center' : 'flex-end',
+              justifyContent: 'center',
+              gap: isMobile ? '0.7rem' : '1.5rem',
               width: '100%', maxWidth: '760px', flexShrink: 0,
-              ...(isMobile ? {} : { marginTop: '-1.5rem' }),
+              marginTop: isMobile ? '-0.7rem' : '-8.6rem',
+              position: 'relative',
+              zIndex: 2,
+              // Manual nudge right on desktop — the centering math checked
+              // out (justifyContent:center on a row with two fixed-width
+              // children should be symmetric regardless of their exact
+              // widths), but it still read as skewed left visually, so
+              // this compensates directly rather than continuing to guess
+              // at a CSS-level cause.
+              ...(isMobile ? {} : { transform: 'translateX(20px)' }),
             }}
           >
-            <a
-              href="https://www.alexiakouletsis.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              onMouseEnter={() => setSigHovered(true)}
-              onMouseLeave={() => setSigHovered(false)}
-              style={{
-                flexShrink: 0,
-                display: 'block',
-                ...(isMobile ? {} : { transform: 'translate(-30px, -15px)' }),
-              }}
-            >
-              <img
-                src="/assets/signature.svg"
-                style={{
-                  width: isMobile ? '100px' : '175px',
-                  height: 'auto', display: 'block',
-                  transform: sigHovered ? 'scale(1.08)' : 'scale(1)',
-                  transition: 'transform 0.25s ease',
-                }}
-              />
-            </a>
+            {/* Desktop: bottom-aligned with the info text via the row's
+                own alignItems:flex-end above, then shifted down by half
+                its own height here — the standard trick for "this
+                element's CENTER lines up with that one's BOTTOM edge"
+                (both start bottom-aligned; translating down 50% of this
+                element's own height moves what was its center to that
+                same shared bottom line). Mobile stays put (no shift) —
+                the two are stacked in a column there, not side by side,
+                so this specific alignment doesn't apply the same way. */}
+            <div style={{ transform: isMobile ? 'none' : 'translateY(50%)' }}>
+              <div className="subtle-stop-motion" style={{ flexShrink: 0, display: 'block' }}>
+                <a
+                  href="https://www.alexiakouletsis.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseEnter={() => setSigHovered(true)}
+                  onMouseLeave={() => setSigHovered(false)}
+                  style={{
+                    flexShrink: 0,
+                    display: 'block',
+                  }}
+                >
+                  <img
+                    src="/assets/signature.svg"
+                    style={{
+                      width: isMobile ? '100px' : '175px',
+                      height: 'auto', display: 'block',
+                      transform: sigHovered ? 'scale(1.08)' : 'scale(1)',
+                      transition: 'transform 0.25s ease',
+                    }}
+                />
+                </a>
+              </div>
+            </div>
             <p style={{
               fontFamily: "'Kiwi Maru', serif",
-              fontSize: isMobile ? 'clamp(0.65rem, 2.6vw, 0.78rem)' : 'clamp(0.72rem, 1.05vw, 0.85rem)',
+              fontSize: isMobile ? 'clamp(0.65rem, 2.6vw, 0.78rem)' : 'clamp(0.76rem, 1.1vw, 0.9rem)',
               color: '#111', lineHeight: 1.6,
-              textAlign: isMobile ? 'center' : 'left', margin: 0,
-              // Fixed width (not just maxWidth) on desktop — this paragraph
-              // grows character-by-character as it types, and without a
-              // fixed box the row's total content width kept changing,
-              // which (combined with justifyContent:'center' on the row)
-              // re-centered the whole row every frame — visually dragging
-              // the signature sideways instead of it staying put.
-              ...(isMobile ? {} : { width: '420px', transform: 'translate(20px, -28px)' }),
+              textAlign: 'center', margin: 0,
+              // Fixed width (not just maxWidth) on desktop — keeps this
+              // row's total content width constant so justifyContent:
+              // 'center' on the row doesn't shift the signature sideways
+              // if this text's own rendered width varies at all.
+              ...(isMobile ? {} : { width: '450px', transform: 'translateY(-4px)' }),
             }}>
               {renderInfo()}
             </p>
-          </motion.div>
+          </div>
+
+          {/* Decorative phase svgs — just the three node-face phases,
+              mode-colored. Desktop: pushed out much further toward the
+              left/right edges and pulled up enough to sit in roughly the
+              same vertical band as the signature/info row above (a
+              negative margin here, not absolute positioning) — since
+              they're so much further outward horizontally at this width,
+              that vertical overlap doesn't create any actual visual
+              collision with the signature/text, which stay narrower and
+              centered. zIndex:2 on the signature row above and zIndex:1
+              here just makes sure that if they ever do get close, the
+              signature/text stays on top. Mobile: no corners to speak of
+              at this width, so both sit close together, centered, under
+              the signature. */}
+          <div
+            style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: isMobile ? 'center' : 'space-between',
+            gap: isMobile ? '1.5rem' : '0',
+            width: '100%',
+            maxWidth: isMobile ? undefined : '1650px',
+            padding: isMobile ? 0 : '0',
+            flexShrink: 0,
+            marginTop: isMobile ? '0.3rem' : '-2.8rem',
+            position: 'relative',
+            zIndex: 1,
+          }}>
+            <img
+              src={mode === 'race' ? '/assets/phases-orange.svg' : '/assets/phases-pink.svg'}
+              style={{ width: isMobile ? '150px' : '330px', height: 'auto', display: 'block' }}
+            />
+            <img
+              src={mode === 'race' ? '/assets/phases-blue.svg' : '/assets/phases-green.svg'}
+              style={{ width: isMobile ? '150px' : '330px', height: 'auto', display: 'block' }}
+            />
+          </div>
         </motion.div>
       </div>
     </div>

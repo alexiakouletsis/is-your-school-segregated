@@ -1,73 +1,50 @@
-# React + TypeScript + Vite
+# Is Your School Segregated?
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A Pudding-style scrollytelling data journalism piece examining course-sharing networks across grade levels at public school districts, illustrating patterns of educational tracking and segregation.
 
-Currently, two official plugins are available:
+**Live site:** [isyourschoolsegregated.com](https://isyourschoolsegregated.com)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## About
 
-## React Compiler
+Readers scroll through force-directed graph visualizations of real course-enrollment data (K–12), watching how students cluster by socioeconomic status or race depending on how tracked a school's course offerings are. A persistent toggle lets readers switch between viewing the data through an SES lens or a race lens at any point in the article.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Built in collaboration with Alvin Chang and the Plural Connections Group.
 
-## Expanding the ESLint configuration
+## Tech stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **React** + **TypeScript** + **Vite**
+- **D3** for the force-directed graph simulations
+- **Framer Motion** for scroll-linked animations and transitions
+- **Tailwind v4**
+- Custom design system using Kiwi Maru and Gaegu typefaces
+- Deployed on **Vercel**
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Running locally
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Then open the local URL Vite prints in your terminal.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+To build for production:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+## Project structure
+
+- `App.tsx` — top-level state, the persistent SES/Race toggle, and the nav bar
+- `Hero.tsx` — the landing screen and intro animation
+- `ArticleSection.tsx` — lays out the article's body sections in order
+- `GraphSectionElementary.tsx`, `GraphSection68.tsx`, `GraphSection912.tsx` — the three scrollytelling graph sections (grades K–5, 6–8, 9–12)
+- `Conclusion.tsx` — the closing section and its dot-based transition
+- `graphUtils.ts` / `graphTypes.ts` — shared graph logic and types
+- `useGraphSection.ts` — shared scroll/step-navigation logic for the graph sections
+- `public/data/graphs/` — the per-grade course-sharing network data
+
+## Data
+
+Course-enrollment networks were converted from GML source data into JSON via `convert_gml_to_json.py`. `analyze_course_enrollments.py` and `compute_course_stats.py` were used during development to explore the data and validate the statistics referenced in the article text.

@@ -1,9 +1,8 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
-import { useScroll, useTransform, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useIsMobile } from '../hooks/useIsMobile'
-import GraphSection from './GraphSection'
+import GraphSectionElementary from './GraphSectionElementary'
+import GraphSectionRepelAttract from './GraphSectionRepelAttract'
 import Section01Part2 from './Section01Part2'
-import GraphSection45 from './GraphSection45'
 import type { Mode } from '../App'
 import Section02 from './Section02'
 import GraphSection68 from './GraphSection68'
@@ -13,33 +12,15 @@ import Section03Part2 from './Section03Part2'
 import GraphSection912 from './GraphSection912'
 import Conclusion from './Conclusion'
 
-const INFO_TEXT = "The classroom networks show how students share classes with one another. Each node/dot represents a student, and a line between two dots means those students share at least one class section together. The closer the nodes are, the more often they are in classrooms together."
-
-const SES_PARA_FULL = "Take these two students entering kindergarten. One of them comes from a higher-SES family (pink/left), and the other from a lower-SES family (green/right). Despite these different backgrounds, they ended up in similar classrooms together in grades K-3 and became best friends."
-const SES_SEGMENTS = [
-  { text: "Take these two students entering kindergarten. One of them comes from a ", color: null },
-  { text: "higher-SES", color: 'var(--color-high-ses)' },
-  { text: " family (", color: null },
-  { text: "pink/left", color: 'var(--color-high-ses)' },
-  { text: "), and the other from a ", color: null },
-  { text: "lower-SES", color: 'var(--color-low-ses)' },
-  { text: " family (", color: null },
-  { text: "green/right", color: 'var(--color-low-ses)' },
-  { text: "). Despite these different backgrounds, they ended up in similar classrooms together in grades K-3 and became best friends.", color: null },
-]
-
-const RACE_PARA_FULL = "Take these two students entering kindergarten. One of them is a white/asian student (orange/left), and the other is a student of color (blue/right). Despite these different backgrounds, they ended up in similar classrooms together in grades K-3 and became best friends."
-const RACE_SEGMENTS = [
-  { text: "Take these two students entering kindergarten. One of them is a ", color: null },
-  { text: "white/asian student", color: 'var(--color-race-1)' },
-  { text: " (", color: null },
-  { text: "orange/left", color: 'var(--color-race-1)' },
-  { text: "), and the other is a ", color: null },
-  { text: "student of color", color: 'var(--color-race-2)' },
-  { text: " (", color: null },
-  { text: "blue/right", color: 'var(--color-race-2)' },
-  { text: "). Despite these different backgrounds, they ended up in similar classrooms together in grades K-3 and became best friends.", color: null },
-]
+// Moved in from the now-retired ArticleIntro.tsx — per feedback, everything
+// else from the old typed multi-paragraph intro is gone; this is the one
+// piece that survives, now living directly at the top of Section 01 itself
+// rather than in a separate component/section, specifically so there's no
+// seam (no gap, no divider, no transition animation) between it and the
+// section's own content. Static, small, left-aligned — not typed/animated.
+const CITATION_BEFORE = "The "
+const CITATION_LINK = "Plural Connections Group"
+const CITATION_AFTER = " has partnered with a public school district in the Southeastern United States to collect data on 75 schools (varying from grades k-12) about classes that students share with one another. Classes can not only affect a student's academic breadth, but also the extent of their friendship networks. Let's take a look at this data in the context of "
 
 interface Node {
   id: number
@@ -62,6 +43,11 @@ interface Props {
   onSection03Part2OverlaySettled?: (scrollY: number) => void
   onSection03Part2AnimReset?: () => void
   onToggleModeAndScrollTop?: () => void
+  // Fires once Conclusion's own dot condense-then-explode reveal has
+  // actually finished — see Conclusion.tsx's own onRevealed prop for the
+  // full reasoning. Forwarded straight through to it; drives NavBar's
+  // one-time auto-reveal in App.tsx.
+  onRevealed?: () => void
   graphResetSignal?: number
   // Each bumped independently by App.tsx's skipAnimationsUpTo, only for
   // sections before whichever nav destination was actually clicked — see
@@ -78,422 +64,220 @@ interface Props {
 }
 
 export default function ArticleSection({
-  onAnimDone = () => {},
-  onOverlaySettled = () => {},
-  onAnimReset = () => {},
+  onToggleModeAndScrollTop = () => {},
+  onRevealed = () => {},
+  graphResetSignal = 0,
+  skipPart2Signal,
+  skipSection02Signal,
+  skipSection03IntroSignal,
+  skipSection03Part2Signal,
+  mode,
   onPart2AnimDone = () => {},
   onPart2OverlaySettled = () => {},
   onPart2AnimReset = () => {},
   onSection03Part2AnimDone = () => {},
   onSection03Part2OverlaySettled = () => {},
   onSection03Part2AnimReset = () => {},
-  onToggleModeAndScrollTop = () => {},
-  graphResetSignal = 0,
-  skipSection01Signal,
-  skipPart2Signal,
-  skipSection02Signal,
-  skipSection03IntroSignal,
-  skipSection03Part2Signal,
-  mode,
-  forceStart,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
-  const [overlaySettled, setOverlaySettled] = useState(false)
-  const [paraText, setParaText] = useState('')
-  const [skipped, setSkipped] = useState(false)
-  const [animsDone, setAnimsDone] = useState(false)
-  const [showScroll, setShowScroll] = useState(false)
-  // New two-phase sequence after the body paragraph finishes: the info
-  // box's background+icon fade in first (text still empty), then its own
-  // text types in — animsDone/showScroll (which used to fire the instant
-  // the paragraph finished) now wait for this whole sequence instead,
-  // since they signal "everything here is done" to the rest of the app's
-  // freeze-chain via onAnimDone.
-  const [infoBoxVisible, setInfoBoxVisible] = useState(false)
-  const [infoText, setInfoText] = useState('')
-  const infoInterval = useRef<ReturnType<typeof setInterval> | null>(null)
-  const paraInterval = useRef<ReturnType<typeof setInterval> | null>(null)
-  const hasSettledRef = useRef(false)
-  const hasResetRef = useRef(false)
-  const finalGrade3NodesRef = useRef<Node[]>([])
-  // Bumped every time GraphSection's onGrade3Complete fires. finalGrade3NodesRef
-  // itself is a plain ref (mutating it doesn't trigger a re-render or rerun
-  // any effect that reads it), and GraphSection45 is already mounted (and
-  // its own step-0 effect may already have run once, using whatever
-  // finalGrade3NodesRef.current was at that moment) well before the user
-  // has necessarily scrolled through GraphSection to reach that callback.
-  // Without this, GraphSection45's step-0 layout could permanently bake in
-  // a stale/empty read and never get a chance to pick up the real
-  // continuation positions once they actually arrive.
-  const [grade3Version, setGrade3Version] = useState(0)
-
-  const PARA_FULL = mode === 'race' ? RACE_PARA_FULL : SES_PARA_FULL
-  const SEGMENTS = mode === 'race' ? RACE_SEGMENTS : SES_SEGMENTS
-  const dot1Src = mode === 'race' ? '/assets/whiteasian-dot-K3.svg' : '/assets/high-SES-dot-K3.svg'
-  const dot2Src = mode === 'race' ? '/assets/poc-dot-K3.svg' : '/assets/low-SES-dot-K3.svg'
-
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start end", "end end"]
-  })
-
-  const overlayY = useTransform(scrollYProgress, [0, 0.5], ['100vh', '-1vh'])
-
-  const forceStartedAtRef = useRef(0)
-
-  useEffect(() => {
-    return scrollYProgress.on('change', (v) => {
-      if (v >= 0.40 && !hasSettledRef.current) {
-        hasSettledRef.current = true
-        hasResetRef.current = false
-        setOverlaySettled(true)
-        onOverlaySettled(window.scrollY)
-      }
-      // Suppressed for a second after a forced start (see below) — the jump
-      // there is done via a burst of scrollTo calls across several frames,
-      // and this listener can catch an intermediate, still-low reading from
-      // partway through that burst and reset everything it had just set.
-      if (v < 0.35 && !hasResetRef.current && Date.now() - forceStartedAtRef.current > 1000) {
-        hasResetRef.current = true
-        hasSettledRef.current = false
-        setOverlaySettled(false)
-        setParaText('')
-        setSkipped(false)
-        setAnimsDone(false)
-        setShowScroll(false)
-        clearInterval(paraInterval.current!)
-        onAnimReset()
-      }
-    })
-  }, [scrollYProgress, onOverlaySettled, onAnimReset])
-
-  // Force settle+typing-start directly, bypassing scroll-progress detection.
-  // Used when the intro's tap-to-advance jumps here programmatically — a
-  // burst of scrollTo calls doesn't reliably give the scroll-linked v value
-  // above a chance to recompute in time, leaving typing stuck until a manual
-  // scroll. This runs unconditionally on tap, sidestepping that race.
-  //
-  // Guards by comparing against the last-seen forceStart value rather than a
-  // one-shot boolean ref — React StrictMode's dev-mode double-invoke of
-  // effects on mount was flipping a boolean guard on the first of the two
-  // simulated invocations, letting the second slip through and fire this
-  // prematurely on page load (starting the typing while still reading the
-  // intro, well before any real tap happened).
-  const lastForceStartRef = useRef(forceStart)
-  useEffect(() => {
-    if (forceStart === undefined) return
-    if (forceStart === lastForceStartRef.current) return
-    lastForceStartRef.current = forceStart
-    forceStartedAtRef.current = Date.now()
-    hasSettledRef.current = true
-    hasResetRef.current = false
-    setOverlaySettled(true)
-    onOverlaySettled(window.scrollY)
-  }, [forceStart])
-
-  // reset and retype on mode change — only the body paragraph, since its
-  // text is mode-dependent. The info box and scroll indicator are left
-  // alone: once infoBoxVisible/animsDone/showScroll are already true, this
-  // doesn't touch them, so their fade-in/typing sequence never replays —
-  // only the paragraph (which Phase 1 below retypes because PARA_FULL
-  // itself changes with mode) visibly reacts to the toggle.
-  useEffect(() => {
-    setParaText('')
-    setSkipped(false)
-    clearInterval(paraInterval.current!)
-    if (overlaySettled) {
-      setOverlaySettled(false)
-      setTimeout(() => setOverlaySettled(true), 50)
-    }
-  }, [mode])
-
-  // Phase 1: body paragraph types out.
-  useEffect(() => {
-    if (!overlaySettled || skipped) return
-    const t = setTimeout(() => {
-      paraInterval.current = setInterval(() => {
-        setParaText(prev => {
-          const next = PARA_FULL.slice(0, prev.length + 1)
-          if (next.length === PARA_FULL.length) {
-            clearInterval(paraInterval.current!)
-            // Hands off to phase 2 below instead of firing
-            // animsDone/showScroll immediately — those now wait for the
-            // whole sequence (paragraph -> info box fade -> info text) to
-            // finish, not just this first part of it.
-            setInfoBoxVisible(true)
-          }
-          return next
-        })
-      }, 22)
-    }, 800)
-    return () => clearTimeout(t)
-  }, [overlaySettled, skipped, PARA_FULL])
-
-  // Phase 2: once the info box's background+icon have faded in, phase 3
-  // starts its text typing after a short pause (same pacing convention
-  // used everywhere else in this app between a fade and a typing start).
-  useEffect(() => {
-    if (!infoBoxVisible || skipped) return
-    const t = setTimeout(() => {
-      infoInterval.current = setInterval(() => {
-        setInfoText(prev => {
-          const next = INFO_TEXT.slice(0, prev.length + 1)
-          if (next.length === INFO_TEXT.length) {
-            clearInterval(infoInterval.current!)
-            // Only NOW is the whole sequence actually done.
-            setAnimsDone(true)
-            setShowScroll(true)
-          }
-          return next
-        })
-      }, 18)
-    }, 600)
-    return () => clearTimeout(t)
-  }, [infoBoxVisible, skipped])
-
-  useEffect(() => {
-    if (animsDone) onAnimDone()
-  }, [animsDone, onAnimDone])
-
-  const skipAll = useCallback(() => {
-    if (skipped || animsDone) return
-    setSkipped(true)
-    clearInterval(paraInterval.current!)
-    clearInterval(infoInterval.current!)
-    setParaText(PARA_FULL)
-    setInfoBoxVisible(true)
-    setInfoText(INFO_TEXT)
-    setAnimsDone(true)
-    setShowScroll(true)
-    onAnimDone()
-  }, [skipped, animsDone, onAnimDone, PARA_FULL])
-
-  // External trigger for the same skip this section already does on
-  // click — see App.tsx's skipAllIntroAnimations for why. Guarded the
-  // same way forceStart is above: comparing against the last-seen value
-  // rather than a one-shot ref, since StrictMode's dev-mode double-invoke
-  // would otherwise let a stray second invocation slip through.
-  //
-  // Also sets forceStartedAtRef — same guard forceStart's own jump uses,
-  // and for the identical reason: NavBar's scrollIntoView jump necessarily
-  // passes through low v values on its way to the destination, and
-  // without this, the reset-check above (`v < 0.35 && !hasResetRef.current`)
-  // fires during that pass-through, wiping out everything skipAll just
-  // set (including reporting onAnimReset() up to App, which nulls the
-  // lock position) — landing the user all the way back at position 0
-  // instead of at the graph they navigated to.
-  const lastSkipSignalRef = useRef(skipSection01Signal)
-  useEffect(() => {
-    if (skipSection01Signal === undefined) return
-    if (skipSection01Signal === lastSkipSignalRef.current) return
-    lastSkipSignalRef.current = skipSection01Signal
-    forceStartedAtRef.current = Date.now()
-    skipAll()
-  }, [skipSection01Signal, skipAll])
-
-  const renderPara = () => {
-    let remaining = paraText
-    return SEGMENTS.map((seg, i) => {
-      if (remaining.length === 0) return null
-      const chunk = remaining.slice(0, seg.text.length)
-      remaining = remaining.slice(seg.text.length)
-      if (!chunk) return null
-      return seg.color
-        ? <span key={i} style={{ color: seg.color }}>{chunk}</span>
-        : <span key={i}>{chunk}</span>
-    })
-  }
 
   return (
-    <div ref={containerRef} style={{ height: '300vh', marginTop: '-220vh', position: 'relative' }} data-section="01">
-      <motion.div
-        data-section-panel="01"
-        onClick={overlaySettled && !animsDone ? skipAll : undefined}
-        onTouchEnd={(e) => {
-          if (overlaySettled && !animsDone) {
-            e.preventDefault()
-            skipAll()
-          }
-        }}
-        style={{
-          position: 'sticky',
-          top: 0,
-          y: overlayY,
-          zIndex: 51,
-          backgroundColor: 'var(--color-bg)',
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          cursor: overlaySettled && !animsDone ? 'default' : 'auto',
-        }}
-      >
-        <div style={{ height: '1px', backgroundColor: '#111', width: '100%', flexShrink: 0 }} />
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: isMobile ? '1.5rem 2rem 2.75rem 2rem' : '6rem 2rem 4rem 2rem',
-        }}>
-          <h2 data-section-header="01" style={{
-            fontFamily: "'Gaegu', cursive",
-            fontSize: 'clamp(2rem, 5vw, 4rem)',
-            color: '#111', fontWeight: 400, textAlign: 'center', margin: 0,
-          }}>
-            Section 01: Elementary School
-          </h2>
-        </div>
+    <div data-section="01" style={{ position: 'relative' }}>
+      {/* Part of the page's own content, NOT the toggle widget itself
+          (App.tsx) — this scrolls away with the rest of Section 01 like
+          any other element here, unlike the toggle, which stays fixed.
+          Positioned to sit visually to the left of the toggle only on
+          initial view, before any scrolling happens. */}
+      <img src="/assets/spark.svg" style={{
+        position: 'absolute',
+        top: isMobile ? '1rem' : '1.5rem',
+        right: isMobile ? '12.5rem' : '18.25rem',
+        width: isMobile ? 'clamp(1.2rem, 4.5vw, 1.6rem)' : 'clamp(1.6rem, 2.2vw, 2.1rem)',
+        height: 'auto',
+        zIndex: 1,
+      }} />
 
+      {/* Text content — normal flow, scrolls away like anything else on
+          the page. The node "settle into place" transition used to live
+          in a separate sticky element here, handing off to
+          GraphSectionRepelAttract's own sticky panel below — but two
+          separate sticky elements handing off to each other is inherently
+          seam-prone (there's always a boundary where one releases and the
+          other engages), which is what was reading as two distinct sets
+          of faces rather than one continuous pair. That whole transition
+          now lives entirely inside GraphSectionRepelAttract instead, as
+          the leading portion of its own single continuous scroll range —
+          see the comment there. */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: isMobile ? '0.75rem' : '3rem',
+        paddingTop: isMobile ? '5.3rem' : '0.75in',
+        paddingBottom: isMobile ? '1rem' : '1.5rem',
+        position: 'relative',
+      }}>
+        {/* Row 1: citation paragraph + toggle-instruction line. Side by
+            side on desktop, stacked on mobile — order swapped on mobile
+            only (toggle-instruction first, citation second) via CSS
+            `order`, so the underlying DOM/JSX order doesn't need to
+            differ between platforms. */}
         <div style={{
-          padding: '0 2rem 4rem 2rem',
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: isMobile ? '1.6rem' : '3rem',
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          alignItems: 'center',
+          gap: isMobile ? '1.5rem' : '3.6rem',
+          padding: isMobile ? '0 1.5rem' : '0 2rem 0 0.5in',
         }}>
           <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: isMobile ? '1.5rem' : '3.5rem',
-            width: '100%', maxWidth: '900px', padding: '0',
+            order: isMobile ? 2 : 0,
+            width: isMobile ? '100%' : '50%',
+            marginLeft: isMobile ? 0 : '2.5rem',
+            marginTop: isMobile ? '-0.3rem' : 0,
+            textAlign: 'left',
+            fontFamily: "'Kiwi Maru', serif",
+            color: '#111',
+            lineHeight: isMobile ? 1.7 : 1.85,
+            flexShrink: 0,
           }}>
-            <img src={dot1Src} style={{
-              width: isMobile ? 'clamp(70px, 18vw, 95px)' : 'clamp(75px, 11vw, 130px)',
-              height: 'auto', animation: 'bob 2s ease-in-out infinite',
-            }} />
-            <img src={dot2Src} style={{
-              width: isMobile ? 'clamp(70px, 18vw, 95px)' : 'clamp(75px, 11vw, 130px)',
-              height: 'auto', animation: 'bob 2s ease-in-out infinite 0.4s',
-            }} />
-          </div>
-
-          <div style={{ position: 'relative', width: '100%', maxWidth: '940px' }}>
-            <p aria-hidden="true" style={{
-              fontFamily: "'Kiwi Maru', serif",
-              fontSize: isMobile ? 'clamp(0.82rem, 1.6vw, 1.1rem)' : 'clamp(1rem, 1.8vw, 1.3rem)',
-              lineHeight: 1.9,
-              width: '100%',
-              textAlign: 'center', margin: 0,
-              visibility: 'hidden',
-            }}>
-              {PARA_FULL}
-            </p>
             <p style={{
-              fontFamily: "'Kiwi Maru', serif",
-              fontSize: isMobile ? 'clamp(0.82rem, 1.6vw, 1.1rem)' : 'clamp(1rem, 1.8vw, 1.3rem)',
-              color: '#111', lineHeight: 1.9,
-              width: '100%',
-              textAlign: 'center', margin: 0,
-              position: 'absolute', top: 0, left: 0, right: 0,
+              fontSize: isMobile ? 'clamp(0.75rem, 3.2vw, 0.92rem)' : 'clamp(0.95rem, 1.45vw, 1.2rem)',
+              margin: 0,
             }}>
-              {renderPara()}
-              {paraText.length > 0 && paraText.length < PARA_FULL.length && (
-                <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-              )}
+              {CITATION_BEFORE}
+              <a href="https://www.pluralconnections.org/" target="_blank" rel="noopener noreferrer"
+                className="pcg-link" style={{ color: '#9E2591', textDecoration: 'none' }}>
+                {CITATION_LINK}
+              </a>
+              {CITATION_AFTER}
+              {mode === 'ses' ? (
+                <motion.span key="ses" initial={{ scale: 1 }} animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 0.6, ease: 'easeInOut' }}
+                  style={{ display: 'inline-block', backgroundColor: '#FDF4CB', borderRadius: '3px', padding: '0 0.15em' }}>
+                  <strong style={{ color: 'var(--color-high-ses)' }}>Socio-Economic </strong>
+                  <strong style={{ color: 'var(--color-low-ses)' }}>Status</strong>
+                </motion.span>
+              ) : (
+                // Bug fix: this branch previously rendered plain, uncolored
+                // "race." — split to match the SES branch's two-color
+                // treatment instead of being the one case with no color at
+                // all.
+                <motion.span key="race" initial={{ scale: 1 }} animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 0.6, ease: 'easeInOut' }}
+                  style={{ display: 'inline-block', backgroundColor: '#FDF4CB', borderRadius: '3px', padding: '0 0.15em' }}>
+                  <strong style={{ color: 'var(--color-race-1)' }}>ra</strong>
+                  <strong style={{ color: 'var(--color-race-2)' }}>ce</strong>
+                </motion.span>
+              )}.
             </p>
           </div>
 
-          <motion.div
-            className="info-box"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: infoBoxVisible ? 1 : 0 }}
-            transition={{ duration: 0.6 }}
-            style={{
-              backgroundColor: '#EADDDD',
-              borderRadius: isMobile ? '20px' : '999px',
-              padding: isMobile ? '1rem 1.5rem' : '1.2rem 2rem',
-              maxWidth: '900px', width: '100%',
-              display: 'flex', alignItems: 'center', gap: '1.5rem',
-            }}
-          >
-            <img src="/assets/i-icon.svg" style={{
-              width: isMobile ? '32px' : '40px',
-              height: isMobile ? '32px' : '40px', flexShrink: 0,
-            }} />
-            <div style={{ position: 'relative', width: '100%' }}>
-              <p aria-hidden="true" style={{
-                fontFamily: "'Kiwi Maru', serif",
-                fontSize: isMobile ? 'clamp(0.6rem, 2.5vw, 0.72rem)' : 'clamp(0.7rem, 1.2vw, 0.9rem)',
-                lineHeight: 1.6, margin: 0,
-                visibility: 'hidden',
-              }}>
-                {INFO_TEXT}
-              </p>
-              <p style={{
-                fontFamily: "'Kiwi Maru', serif",
-                fontSize: isMobile ? 'clamp(0.6rem, 2.5vw, 0.72rem)' : 'clamp(0.7rem, 1.2vw, 0.9rem)',
-                color: '#111', lineHeight: 1.6, margin: 0,
-                position: 'absolute', top: 0, left: 0, right: 0,
-              }}>
-                {infoText}
-                {infoText.length > 0 && infoText.length < INFO_TEXT.length && (
-                  <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-                )}
-              </p>
-            </div>
-          </motion.div>
-
-          <motion.div
-            onClick={() => showScroll && window.scrollBy({ top: window.innerHeight * 1.35, behavior: 'smooth' })}
-            className="scroll-cue"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: showScroll ? 1 : 0 }}
-            transition={{ duration: 1, delay: 0.5 }}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: '0.75rem',
+          {/* Toggle-instruction line + arrow — to the right of the citation
+              on desktop, above it on mobile (order-swapped, see above).
+              rightuparrow.svg points toward wherever the actual SES/Race
+              toggle lives (top-right corner). */}
+          <div style={{
+            order: isMobile ? 1 : 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isMobile ? 'flex-start' : 'center',
+            gap: isMobile ? '0.05rem' : '1.8rem',
+            width: isMobile ? '100%' : 'auto',
+            marginTop: isMobile ? '-0.6rem' : '0.3rem',
+            marginLeft: isMobile ? 0 : '1.5rem',
+          }}>
+            <span style={{
               fontFamily: "'Gaegu', cursive",
-              fontSize: 'clamp(1.1rem, 2.5vw, 1.6rem)',
+              fontSize: isMobile ? 'clamp(1.1rem, 4.2vw, 1.5rem)' : 'clamp(1.15rem, 1.75vw, 1.55rem)',
               color: '#111',
-              cursor: showScroll ? 'pointer' : 'default',
-              pointerEvents: showScroll ? 'auto' : 'none',
-            }}
-          >
-            <span className="scroll-cue-text">scroll</span>
-            <img src="/assets/down-scroll-arrow.svg" style={{ width: isMobile ? '1.25rem' : '1.4rem', height: 'auto' }} />
-          </motion.div>
-
+              lineHeight: 1.3,
+              maxWidth: isMobile ? '280px' : '360px',
+              marginTop: isMobile ? 0 : '2.7rem',
+            }}>
+              Click this toggle throughout your experience to view this data in a different context.
+            </span>
+            <img src="/assets/rightuparrow.svg" style={{
+              width: isMobile ? 'clamp(2.6rem, 9vw, 3.6rem)' : 'clamp(3.6rem, 5.5vw, 5.2rem)',
+              height: 'auto', flexShrink: 0,
+              transform: isMobile ? 'translateX(-0.8rem)' : 'none',
+              position: 'relative', top: isMobile ? '-0.2rem' : '-0.5rem',
+            }} />
+          </div>
         </div>
 
-        <GraphSection
-          mode={mode}
-          resetSignal={graphResetSignal}
-          onGrade3Complete={(nodes) => {
-            finalGrade3NodesRef.current = nodes
-            setGrade3Version(v => v + 1)
-          }}
-        />
-
-        <div style={{ width: '100%', position: 'relative', zIndex: 2, backgroundColor: 'var(--color-bg)' }}>
-          <Section01Part2
-            onAnimDone={onPart2AnimDone}
-            onOverlaySettled={onPart2OverlaySettled}
-            onAnimReset={onPart2AnimReset}
-            skipSignal={skipPart2Signal}
-            mode={mode}
-          />
+        {/* Static SES/race intro line — same wording/coloring convention as
+            the rest of the site (higher-SES/lower-SES, white/asian/student
+            of color), just a plain paragraph now rather than typed.
+            min-height reserves room for whichever mode's text is longer
+            (mobile specifically — race mode wraps to one fewer line than
+            SES mode there) so switching modes doesn't change this block's
+            own height, which otherwise shifted GraphSectionRepelAttract's
+            overlap position below it, and with it the node SVGs. */}
+        <div style={{
+          padding: '0 1.5rem',
+          maxWidth: isMobile ? '100%' : '940px',
+          margin: isMobile ? '0.5rem auto 0 auto' : '0 auto 0 auto',
+          textAlign: 'center',
+          minHeight: isMobile ? '9.5em' : undefined,
+        }}>
+          <p style={{
+            fontFamily: "'Kiwi Maru', serif",
+            fontSize: isMobile ? 'clamp(1.02rem, 4vw, 1.3rem)' : 'clamp(1.42rem, 2.4vw, 1.8rem)',
+            color: '#111', lineHeight: 1.9, margin: 0,
+          }}>
+            {mode === 'ses' ? (
+              <>
+                Take these two students entering kindergarten. One of them comes from a{' '}
+                <span style={{ color: 'var(--color-high-ses)' }}>higher-SES</span> family (pink/left), and the other from a{' '}
+                <span style={{ color: 'var(--color-low-ses)' }}>lower-SES</span> family (green/right).
+              </>
+            ) : (
+              <>
+                Take these two students entering kindergarten. One of them is a{' '}
+                <span style={{ color: 'var(--color-race-1)' }}>white/asian student</span> (orange/left), and the other is a{' '}
+                <span style={{ color: 'var(--color-race-2)' }}>student of color</span> (blue/right).
+              </>
+            )}
+          </p>
         </div>
 
-        <GraphSection45
-          mode={mode}
-          initialNodes={finalGrade3NodesRef}
-          grade3Version={grade3Version}
-          resetSignal={graphResetSignal}
-        />
+        {/* Desktop-only decoration — points from this text down toward
+            the node SVGs in GraphSectionRepelAttract below. Positioned
+            relative to this specific block (not the outer, very tall
+            section) so it stays anchored to the intro area regardless of
+            how much content follows. */}
+        {!isMobile && (
+          <img src="/assets/bigarrow.svg" style={{
+            position: 'absolute',
+            bottom: '-34%',
+            left: '10%',
+            width: 'clamp(15.5rem, 26vw, 26rem)',
+            height: 'auto',
+            pointerEvents: 'none',
+          }} />
+        )}
+      </div>
 
-        <Section02 mode={mode} skipSignal={skipSection02Signal} />
-        <GraphSection68 mode={mode} resetSignal={graphResetSignal} />
-        <Section03Intro mode={mode} skipSignal={skipSection03IntroSignal} />
-        <CourseClusterSection mode={mode} />
-        <Section03Part2
-          onAnimDone={onSection03Part2AnimDone}
-          onOverlaySettled={onSection03Part2OverlaySettled}
-          onAnimReset={onSection03Part2AnimReset}
-          skipSignal={skipSection03Part2Signal}
-          mode={mode}
-        />
-        <GraphSection912 mode={mode} resetSignal={graphResetSignal} />
-        <Conclusion
-          mode={mode}
-          onToggleModeAndScrollTop={onToggleModeAndScrollTop}
-        />
+      <GraphSectionRepelAttract mode={mode} />
 
-      </motion.div>
+      <Section01Part2 mode={mode} />
+
+      <GraphSectionElementary mode={mode} resetSignal={graphResetSignal} />
+
+      <Section02 mode={mode} skipSignal={skipSection02Signal} />
+      <GraphSection68 mode={mode} resetSignal={graphResetSignal} />
+      <Section03Intro mode={mode} skipSignal={skipSection03IntroSignal} />
+      <CourseClusterSection mode={mode} />
+      <Section03Part2
+        onAnimDone={onSection03Part2AnimDone}
+        onOverlaySettled={onSection03Part2OverlaySettled}
+        onAnimReset={onSection03Part2AnimReset}
+        skipSignal={skipSection03Part2Signal}
+        mode={mode}
+      />
+      <GraphSection912 mode={mode} resetSignal={graphResetSignal} />
+      <Conclusion
+        mode={mode}
+        onToggleModeAndScrollTop={onToggleModeAndScrollTop}
+        onRevealed={onRevealed}
+      />
     </div>
   )
 }

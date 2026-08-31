@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useScroll, useMotionValue, animate } from 'framer-motion'
 import { useGraphSection } from '../hooks/useGraphSection'
 import NodeStats from './NodeStats'
 import type { Mode } from '../App'
@@ -10,10 +10,16 @@ import {
   isProtagonist, getNodeColor, getFaceSrc, applyHoverHighlight, getTooltipHtml,
 } from './graphUtils'
 
+// White faux-border behind protagonist face svgs, matching
+// GraphSectionElementary's convention — a solid circle rendered behind
+// each protagonist's face image, since <image> elements can't take a
+// stroke directly. Face sizes themselves are untouched.
+const BORDER_RATIO = 0.51
+
 const DIALOGUE = [
   { node: 'high', text: "I hope we'll still have the same teachers!", delay: 0 },
-  { node: 'low', text: "Promise we'll still be friends even if we don't?", delay: 2200 },
-  { node: 'high', text: "Promise!", delay: 4400 },
+  { node: 'low', text: "Promise we'll still be friends even if we don't?", delay: 1150 },
+  { node: 'high', text: "Promise!", delay: 2300 },
 ]
 
 // Step 0 is the dialogue phase. Step 1 is the existing generic/district-wide
@@ -35,10 +41,15 @@ const TRACKING_LOW_TEXT = "This is what a middle school with minimal course trac
 // when moving between steps 2/3/4, the suffix crossfades (fades out/in)
 // instead of retyping, since the prefix is already sitting there.
 const ALT_TEXT_PREFIX = "And this is what "
-const ALT_TEXT_SUFFIX: Record<number, string> = {
-  2: "6th grade looks like at a different public middle school. Students are funneled into pathways as young as 11 or 12 years old.",
-  3: "7th grade looks like at that public middle school.",
-  4: "8th grade looks like at that public middle school.",
+const ALT_TEXT_SUFFIX_DESKTOP: Record<number, string> = {
+  2: "6th grade looks like at a school with high course tracking/ segregation rates.",
+  3: "7th grade looks like at that middle school.",
+  4: "8th grade looks like at that middle school.",
+}
+const ALT_TEXT_SUFFIX_MOBILE: Record<number, string> = {
+  2: "6th grade looks like at a school with high course tracking/segregation rates.",
+  3: "7th grade looks like at that middle school.",
+  4: "8th grade looks like at that middle school.",
 }
 
 const getNoticeTarget = (step: number) => {
@@ -155,8 +166,6 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
   const [visibleBubbles, setVisibleBubbles] = useState<boolean[]>([false, false, false])
   const [bubbleTexts, setBubbleTexts] = useState<string[]>(['', '', ''])
   const [dialogueDone, setDialogueDone] = useState(false)
-  const dialogueDoneRef = useRef(false)
-  const bubbleIntervals = useRef<ReturnType<typeof setInterval>[]>([])
   const dialogueTimers = useRef<ReturnType<typeof setTimeout>[]>([])
   const hasPlayedDialogue = useRef(false)
 
@@ -167,8 +176,6 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
   // below) and NodeStats' own entrance sequence (which watches this via its
   // skipSignal prop). Harmless to bump even when nothing is typing.
   const [skipTypingSignal, setSkipTypingSignal] = useState(0)
-
-  useEffect(() => { dialogueDoneRef.current = dialogueDone }, [dialogueDone])
 
   // Guards against scrolling straight past an alt-school step before its
   // render has actually painted. alt-6 in particular (the densest of the
@@ -188,9 +195,73 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
   } = useGraphSection({
     steps: STEPS,
     blockScrollForward: () =>
-      (currentStep === 0 && !dialogueDoneRef.current) ||
-      (currentStep >= 2 && Date.now() - altStepEnteredAtRef.current < 900),
+      currentStep >= 2 && Date.now() - altStepEnteredAtRef.current < 900,
   })
+
+  // Mobile-only: the main graph effect below waits for this to catch up
+  // to currentStep before actually building anything. A step change here
+  // can trigger a real rebuild (a new alt-school step, or tearing down
+  // the previous one) that runs synchronously in one block — on mobile's
+  // much weaker CPUs that can block the main thread long enough to also
+  // block touch/scroll input processing entirely. Originally added to
+  // GraphSection912 specifically for grade 9's cold-start build, but this
+  // section needs it too now that NavBar's navResetGraphStep can force an
+  // immediate currentStep change here as well (nav-jumping to this
+  // section always resets it to step 0) — without this defer, that reset
+  // and whatever rebuild follows would run in the very same tick as the
+  // nav's own scroll-into-view and scroll-wiggle, which is exactly the
+  // kind of "can't scroll away" freeze reported after adding nav-bar
+  // navigation. Desktop skips this — its own pipeline is fast enough that
+  // it hasn't been a problem there.
+  const [deferredStep, setDeferredStep] = useState(currentStep)
+  useEffect(() => {
+    if (!isMobile) {
+      setDeferredStep(currentStep)
+      return
+    }
+    const rafId = requestAnimationFrame(() => setDeferredStep(currentStep))
+    return () => cancelAnimationFrame(rafId)
+  }, [currentStep, isMobile])
+
+  // Graph-paper background — same convention as GraphSectionElementary and
+  // GraphSectionRepelAttract: fades in as the user approaches (entry),
+  // fades out approaching the end of the section (exit). This section
+  // didn't have this background at all before this pass.
+  const outerRef = useRef<HTMLDivElement>(null)
+  const { scrollYProgress: entryProgress } = useScroll({
+    target: outerRef,
+    offset: ["start end", "start start"],
+  })
+  const { scrollYProgress: exitProgress } = useScroll({
+    target: outerRef,
+    offset: ["end end", "end start"],
+  })
+  const bgOpacity = useMotionValue(0)
+  const [isVisuallyActive, setIsVisuallyActive] = useState(false)
+
+  useEffect(() => {
+    return entryProgress.on('change', (v) => {
+      const amt = Math.min(1, Math.max(0, (v - 0.15) / 0.85))
+      bgOpacity.set(amt)
+      setIsVisuallyActive(amt > 0.3)
+    })
+  }, [entryProgress])
+
+  useEffect(() => {
+    return exitProgress.on('change', (v) => {
+      if (v <= 0) return
+      const fadeOutAmount = Math.min(1, v / 0.5)
+      bgOpacity.set(1 - fadeOutAmount)
+      setIsVisuallyActive(fadeOutAmount < 0.3)
+    })
+  }, [exitProgress])
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('graphSectionActive', { detail: { id: 'graph-68', active: isVisuallyActive } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('graphSectionActive', { detail: { id: 'graph-68', active: false } }))
+    }
+  }, [isVisuallyActive])
 
   // Only bumped by Conclusion's bottom-of-page toggle (a deliberate full
   // restart), never by a plain mode change — see the comment on
@@ -200,6 +271,20 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
     if (isFirstResetRender.current) { isFirstResetRender.current = false; return }
     setCurrentStep(0)
   }, [resetSignal, setCurrentStep])
+
+  // Nav-jumping here should always start at step 0, not resume wherever
+  // this section was last left off — see App.tsx's skipAnimationsUpTo,
+  // which dispatches this scoped to whichever section id was actually
+  // clicked (not graphResetSignal, which would reset every graph section
+  // at once regardless of destination).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { id } = (e as CustomEvent<{ id: string }>).detail
+      if (id === 'graph-68') setCurrentStep(0)
+    }
+    window.addEventListener('navResetGraphStep', handler)
+    return () => window.removeEventListener('navResetGraphStep', handler)
+  }, [setCurrentStep])
 
   useEffect(() => {
     if (currentStep >= 2) altStepEnteredAtRef.current = Date.now()
@@ -214,7 +299,6 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       setVisibleBubbles([false, false, false])
       setBubbleTexts(['', '', ''])
       setDialogueDone(false)
-      bubbleIntervals.current.forEach(t => clearInterval(t))
       dialogueTimers.current.forEach(t => clearTimeout(t))
       return
     }
@@ -227,17 +311,9 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       DIALOGUE.forEach((d, i) => {
         const t = setTimeout(() => {
           setVisibleBubbles(prev => { const next = [...prev]; next[i] = true; return next })
-          let charIndex = 0
-          const interval = setInterval(() => {
-            charIndex++
-            setBubbleTexts(prev => { const next = [...prev]; next[i] = d.text.slice(0, charIndex); return next })
-            if (charIndex >= d.text.length) {
-              clearInterval(interval)
-              if (i === DIALOGUE.length - 1) setDialogueDone(true)
-            }
-          }, 22)
-          bubbleIntervals.current[i] = interval
-        }, d.delay + 600)
+          setBubbleTexts(prev => { const next = [...prev]; next[i] = d.text; return next })
+          if (i === DIALOGUE.length - 1) setDialogueDone(true)
+        }, d.delay + 300)
         dialogueTimers.current.push(t)
       })
     }
@@ -273,27 +349,16 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       return () => {
         observer.disconnect()
         dialogueTimers.current.forEach(t => clearTimeout(t))
-        bubbleIntervals.current.forEach(t => clearInterval(t))
-      }
+        }
     } else {
       // Desktop stays pinned via position:sticky for a long scroll range
-      // once stuck, so the narrow band check has plenty of time to catch a
-      // scroll event and works fine as-is.
-      //
-      // This threshold MUST be >= useGraphSection's own wheel-block band
-      // (rect.top within ±50 — see the `if (rect.top > 50 || rect.top <
-      // -50) return` guard in useGraphSection.ts's handleWheel). That
-      // handler starts preventing forward wheel scroll as soon as
-      // blockScrollForward() is true, which it is immediately on entering
-      // step 0 (dialogueDone starts false) — if this trigger band were
-      // narrower than the block band (it previously was: ±10), a slow
-      // scroll could get its forward wheel input blocked while still
-      // sitting between ±50 and ±10, never actually reaching the ±10 zone
-      // needed to fire play() and set dialogueDone. That's a deadlock: can't
-      // scroll forward (blocked), and the one thing that would unblock it
-      // (the dialogue finishing) never starts. Matching the two bands
-      // closes that gap — the moment the block could possibly engage, the
-      // dialogue has already been triggered.
+      // once stuck, so this band check has plenty of time to catch a
+      // scroll event and works fine as-is. (This used to also need to
+      // stay >= useGraphSection's own wheel-block band to avoid a
+      // scroll-lock deadlock — that's no longer a concern now that
+      // forward scroll is never blocked for the dialogue, but the same
+      // band still reliably detects "this section has settled into
+      // view.")
       const tryPlay = () => {
         if (hasPlayedDialogue.current) return
         if (!sectionRef.current) return
@@ -308,7 +373,6 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       return () => {
         window.removeEventListener('scroll', tryPlay)
         dialogueTimers.current.forEach(t => clearTimeout(t))
-        bubbleIntervals.current.forEach(t => clearInterval(t))
       }
     }
   }, [currentStep, isMobile])
@@ -332,7 +396,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       i++
       setNoticeText(target.slice(0, i))
       if (i >= target.length) clearInterval(noticeIntervalRef.current!)
-    }, 22)
+    }, 10)
   }, [currentStep])
 
   // alt-group text — types the full "And this is what 6th grade..." sentence
@@ -353,7 +417,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
     }
     if (wasInAltGroupRef.current) return // already in the group — crossfade handles step changes, no retyping
     wasInAltGroupRef.current = true
-    const fullText = ALT_TEXT_PREFIX + ALT_TEXT_SUFFIX[2]
+    const fullText = ALT_TEXT_PREFIX + (isMobile ? ALT_TEXT_SUFFIX_MOBILE : ALT_TEXT_SUFFIX_DESKTOP)[2]
     clearInterval(altIntervalRef.current!)
     setAltTypedText('')
     setAltTypingDone(false)
@@ -365,8 +429,8 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
         clearInterval(altIntervalRef.current!)
         setAltTypingDone(true)
       }
-    }, 22)
-  }, [currentStep])
+    }, 10)
+  }, [currentStep, isMobile])
 
   // load data
   useEffect(() => {
@@ -383,12 +447,22 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
   useEffect(() => {
     if (!svgRef.current) return
     applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current)
-  }, [hoveredNode])
+    // applyHoverHighlight's broad 'circle' selector also matches the
+    // protagonist-border circles (added below) — reset their radius back
+    // to the correct border-ratio value right after, same fix as
+    // GraphSectionElementary needed for the same shared-selector issue.
+    d3.select(svgRef.current).selectAll<SVGCircleElement, Node>('circle.protagonist-border')
+      .attr('r', getFaceSize() * BORDER_RATIO)
+  }, [hoveredNode, currentStep])
 
   // main graph effect
   useEffect(() => {
     if (!svgRef.current || graphSize.width === 0) return
     if (currentStep > 0 && !allGraphData[currentStep - 1]) return
+    // Mobile-only: wait for the one-frame defer above to catch up before
+    // doing any real work — see deferredStep's own comment for why. This
+    // effect will naturally re-run once setDeferredStep fires.
+    if (isMobile && deferredStep !== currentStep) return
 
     const svg = d3.select(svgRef.current)
     const g = svg.select<SVGGElement>('g.root')
@@ -493,7 +567,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       // Same autoZoom helper, same call shape as the non-alt sections —
       // for the same default zoom-to-fit feel when moving between steps,
       // instead of the custom scale/identity-reset logic used previously.
-      const zoomTimer = autoZoom(g, width, height, padding, 800)
+      const zoomTimer = autoZoom(g, width, height, padding, currentStep >= 3 ? 1400 : 800)
 
       simulation.on('tick', () => {
         linkG.selectAll<SVGLineElement, Edge>('line')
@@ -519,9 +593,10 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       const nonProtags = newNodes.filter(n => !isAltProtagonist(n.id))
       const protags = newNodes.filter(n => isAltProtagonist(n.id))
 
-      nodeG.selectAll<SVGCircleElement, Node>('circle').data(nonProtags, d => d.id)
+      nodeG.selectAll<SVGCircleElement, Node>('circle.regular-node').data(nonProtags, d => d.id)
         .join(
           enter => enter.append('circle')
+            .attr('class', 'regular-node')
             .attr('cx', d => d.x ?? cx).attr('cy', d => d.y ?? cy).attr('r', 6)
             .attr('fill', d => getAltNodeColor(d, mode))
             .attr('stroke', 'white').attr('stroke-width', 0.8)
@@ -529,6 +604,17 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
             .transition().duration(500).attr('opacity', 1),
           update => update.attr('fill', d => getAltNodeColor(d, mode)),
           exit => exit.transition().duration(300).attr('opacity', 0).remove()
+        )
+
+      nodeG.selectAll<SVGCircleElement, Node>('circle.protagonist-border').data(protags, d => d.id)
+        .join(
+          enter => enter.insert('circle', ':first-child')
+            .attr('class', 'protagonist-border')
+            .attr('cx', d => d.x ?? cx).attr('cy', d => d.y ?? cy)
+            .attr('r', faceSize * BORDER_RATIO).attr('fill', 'white')
+            .attr('pointer-events', 'none'),
+          update => update.attr('r', faceSize * BORDER_RATIO),
+          exit => exit.remove()
         )
 
       nodeG.selectAll<SVGImageElement, Node>('image').data(protags, d => d.id)
@@ -598,13 +684,23 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
     const nodeColorFn = getNodeColor
     const faceSrcFn = (d: Node) => getFaceSrc(d, mode, '68')
 
-    const circles = nodeG.selectAll<SVGCircleElement, Node>('circle').data(nonProtags, d => d.id)
+    const circles = nodeG.selectAll<SVGCircleElement, Node>('circle.regular-node').data(nonProtags, d => d.id)
     circles.exit().transition().duration(300).attr('opacity', 0).remove()
     circles.enter().append('circle')
+      .attr('class', 'regular-node')
       .attr('cx', d => d.x ?? cx).attr('cy', d => d.y ?? cy).attr('r', 6)
       .attr('fill', d => nodeColorFn(d, mode)).attr('stroke', 'white').attr('stroke-width', 0.8)
       .attr('cursor', 'pointer').attr('opacity', 0).transition().duration(500).attr('opacity', 1)
     circles.transition().duration(300).attr('fill', d => nodeColorFn(d, mode))
+
+    const protagBorders = nodeG.selectAll<SVGCircleElement, Node>('circle.protagonist-border').data(protags, d => d.id)
+    protagBorders.exit().remove()
+    protagBorders.attr('r', faceSize * BORDER_RATIO)
+    protagBorders.enter().insert('circle', ':first-child')
+      .attr('class', 'protagonist-border')
+      .attr('cx', d => d.x ?? cx).attr('cy', d => d.y ?? cy)
+      .attr('r', faceSize * BORDER_RATIO).attr('fill', 'white')
+      .attr('pointer-events', 'none')
 
     const faceImages = nodeG.selectAll<SVGImageElement, Node>('image').data(protags, d => d.id)
     faceImages.exit().remove()
@@ -621,7 +717,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       clearTimeout(zoomTimer)
       tooltipRef.current?.style('opacity', 0)
     }
-  }, [currentStep, allGraphData, graphSize, mode, isMobile])
+  }, [currentStep, deferredStep, allGraphData, graphSize, mode, isMobile])
 
   const renderNoticeContent = () => {
     if (currentStep === 1) {
@@ -639,7 +735,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
         return (
           <>
             {altTypedText}
-            {altTypedText.length < (ALT_TEXT_PREFIX + ALT_TEXT_SUFFIX[2]).length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
+            {altTypedText.length < (ALT_TEXT_PREFIX + (isMobile ? ALT_TEXT_SUFFIX_MOBILE : ALT_TEXT_SUFFIX_DESKTOP)[2]).length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
           </>
         )
       }
@@ -652,7 +748,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
               transition={{ duration: 0.35 }}
               style={{ display: 'inline' }}
             >
-              {ALT_TEXT_SUFFIX[currentStep]}
+              {(isMobile ? ALT_TEXT_SUFFIX_MOBILE : ALT_TEXT_SUFFIX_DESKTOP)[currentStep]}
             </motion.span>
           </AnimatePresence>
         </>
@@ -663,7 +759,6 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
 
   const skipDialogue = () => {
     if (currentStep !== 0 || dialogueDone) return
-    bubbleIntervals.current.forEach(t => clearInterval(t))
     dialogueTimers.current.forEach(t => clearTimeout(t))
     setVisibleBubbles([true, true, true])
     setBubbleTexts(DIALOGUE.map(d => d.text))
@@ -682,7 +777,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
     }
     if (currentStep >= 2 && !altTypingDone) {
       clearInterval(altIntervalRef.current!)
-      setAltTypedText(ALT_TEXT_PREFIX + ALT_TEXT_SUFFIX[2])
+      setAltTypedText(ALT_TEXT_PREFIX + (isMobile ? ALT_TEXT_SUFFIX_MOBILE : ALT_TEXT_SUFFIX_DESKTOP)[2])
       setAltTypingDone(true)
     }
     setSkipTypingSignal(s => s + 1)
@@ -690,12 +785,6 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
 
   const bubbleColorHigh = mode === 'race' ? '#FF9260' : '#FF8BDE'
   const bubbleColorLow = mode === 'race' ? '#8BA4FF' : '#22D880'
-
-  // Gates NodeStats' entrance typing: true once step 1's own notice text
-  // ("This is what a middle school...") has finished typing, or trivially
-  // true if we're not even on step 1 (e.g. arrived via nav-bar jump) so
-  // stats can still start normally in that case.
-  const step1NoticeDone = !(currentStep === 1 && noticeText.length < TRACKING_LOW_TEXT.length)
 
   // altFullPopulationRef is only populated inside the main graph-building
   // effect, which runs AFTER the render that first flips currentStep to 2
@@ -718,23 +807,21 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
     fontSize: isMobile ? 'clamp(0.65rem, 2.8vw, 0.85rem)' : 'clamp(0.8rem, 1.2vw, 1rem)',
     color: '#111',
     lineHeight: 1.4,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+    boxShadow: '0 9px 22px rgba(0,0,0,0.3)',
     position: 'relative' as const,
     textAlign: isRight ? 'right' as const : 'left' as const,
   })
 
   return (
-    <div id="graph-68" style={{ height: isMobile ? '100svh' : `${STEPS.length * 100}vh`, position: 'relative', flexShrink: 0, width: '100%', marginTop: isMobile ? '-3vh' : 0 }}>
+    <div ref={outerRef} id="graph-68" style={{ height: isMobile ? '100vh' : `${STEPS.length * 100}vh`, position: 'relative', flexShrink: 0, width: '100%' }}>
       <div
         ref={sectionRef}
         style={{
           position: isMobile ? 'relative' : 'sticky',
           top: 0,
           width: '100%',
-          height: isMobile ? '100svh' : '100vh',
+          height: '100vh',
           backgroundColor: 'var(--color-bg)',
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
           overflow: 'hidden',
           // Mobile-only experiment: this panel's IntersectionObserver-
           // triggered dialogue mount (typing bubbles, changing box heights)
@@ -748,8 +835,32 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
         }}
       >
 
+        {/* Graph-paper background — direct child of sectionRef (not the
+            content wrapper below) so it always spans the section's full
+            height regardless of how much shorter the actual content is
+            on mobile. */}
+        <motion.div style={{
+          position: 'absolute', inset: 0, zIndex: 0,
+          backgroundImage: 'url(/assets/graph-paper-bg.png)',
+          backgroundRepeat: 'repeat',
+          opacity: bgOpacity,
+          pointerEvents: 'none',
+        }} />
+
+        {/* Content wrapper — capped shorter than the section's own 100vh
+            on mobile (matching GraphSectionElementary/GraphSectionRepel-
+            Attract's convention) so there's edge padding at the bottom;
+            only the wallpaper above extends into that extra space. */}
+        <div style={{ height: isMobile ? '94vh' : '100%', width: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', position: 'relative' }}>
+
         {/* left panel */}
-        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'flex-start', padding: isMobile ? '1.25rem 1.5rem 0.2rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative' }}>
+        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'flex-start', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative' }}>
+          {/* Semi-opaque rounded panel behind the left column's content —
+              same convention as GraphSectionElementary/GraphSectionRepel-
+              Attract. Didn't exist here before this pass. */}
+          {!isMobile && (
+            <div style={{ position: 'absolute', top: '3%', bottom: '3%', left: '1rem', right: '1rem', backgroundColor: 'rgba(250, 249, 246, 0.82)', borderRadius: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', zIndex: 0 }} />
+          )}
           {/* Desktop: full 1in top margin (the wrapper's own 6rem padding
               above). Notice text and the title keep the same (flexible,
               equal) gaps between them as before; the three stat pieces
@@ -757,19 +868,19 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
               together right under the title instead of also being spread
               out. */}
           {!isMobile && (
-            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
               {/* Fixed, uniform height across every step — NOT
                   per-step-measured. See GraphSection912's identical
                   comment for the full reasoning: ghost-text sizing let
                   this box's height vary step to step, which shifted the
                   title's vertical position along with it (visible as the
                   title drifting up/down between steps). Locking to one
-                  height (sized for the longest alt-school sentence, which
-                  is also why those steps' font is smaller below) keeps
-                  the title's position identical on every step. */}
+                  height keeps the title's position identical on every
+                  step regardless of how long any given step's sentence
+                  runs. */}
               <div style={{ height: '11.5rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
                 {(currentStep === 1 ? noticeText : altTypedText || altTypingDone) && (
-                  <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: currentStep >= 2 ? 'clamp(0.94rem, 1.55vw, 1.2rem)' : 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                  <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
                     {renderNoticeContent()}
                   </p>
                 )}
@@ -793,20 +904,26 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
               </div>
               <div style={{ flex: 1 }} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2.25rem' }}>
-                <NodeStats nodes={statsNodes} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={false} startTyping={step1NoticeDone} skipSignal={skipTypingSignal} />
+                <NodeStats nodes={statsNodes} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={false} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} />
               </div>
             </div>
           )}
           {isMobile && (
-            <AnimatePresence mode="wait">
-              <motion.p key={currentStep}
-                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.4 }}
-                style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.9rem, 3.5vw, 1.1rem)', color: '#111', lineHeight: 1.6, margin: 0, textAlign: 'center' }}
-              >
-                {STEPS[currentStep].label}
-              </motion.p>
-            </AnimatePresence>
+            <div style={{
+              backgroundColor: 'rgba(250, 249, 246, 0.82)',
+              borderRadius: '18px',
+              padding: '1rem 1.5rem',
+            }}>
+              <AnimatePresence mode="wait">
+                <motion.p key={currentStep}
+                  initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.4 }}
+                  style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.9rem, 3.5vw, 1.1rem)', color: '#111', lineHeight: 1.6, margin: 0, textAlign: 'center' }}
+                >
+                  {STEPS[currentStep].label}
+                </motion.p>
+              </AnimatePresence>
+            </div>
           )}
         </div>
 
@@ -885,26 +1002,30 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
 
           <svg ref={svgRef} width={graphSize.width} height={graphSize.height} style={{ display: 'block', width: '100%', height: '100%', touchAction: 'pan-y' }} />
 
-          {/* comic strip dialogue bubbles */}
+          {/* comic strip dialogue bubbles — alternating heights matching
+              GraphSectionElementary's dialogue pattern: each message gets
+              its own independently-positioned bubble instead of stacking
+              two of them in one shared column, since "Promise!" (a reply)
+              needs to sit below "Promise we'll...?" rather than directly
+              under "I hope..." in the same left-side stack. */}
           {currentStep === 0 && (
             <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
-              <div style={{ position: 'absolute', left: isMobile ? '3%' : '10%', top: isMobile ? '12%' : '15%', display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: isMobile ? '160px' : '240px' }}>
-                {[0, 2].map(i => visibleBubbles[i] && (
-                  <motion.div key={i}
+              {/* "I hope we'll still have the same teachers!" — highest */}
+              <div style={{ position: 'absolute', left: isMobile ? '15%' : '19%', top: isMobile ? '21%' : '13%', maxWidth: isMobile ? '160px' : '240px' }}>
+                {visibleBubbles[0] && (
+                  <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4 }}
                     style={bubbleStyle(false, bubbleColorHigh)}
                   >
-                    {bubbleTexts[i]}
-                    {bubbleTexts[i].length > 0 && bubbleTexts[i].length < DIALOGUE[i].text.length && (
-                      <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-                    )}
+                    {bubbleTexts[0]}
                     <div style={{ position: 'absolute', bottom: '-10px', left: '20px', width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '10px solid white' }} />
                     <div style={{ position: 'absolute', bottom: '-13px', left: '18px', width: 0, height: 0, borderLeft: '10px solid transparent', borderRight: '10px solid transparent', borderTop: `12px solid ${bubbleColorHigh}` }} />
                   </motion.div>
-                ))}
+                )}
               </div>
-              <div style={{ position: 'absolute', right: isMobile ? '3%' : '10%', top: isMobile ? '12%' : '15%', maxWidth: isMobile ? '160px' : '240px' }}>
+              {/* "Promise we'll still be friends even if we don't?" — middle */}
+              <div style={{ position: 'absolute', right: isMobile ? '15%' : '19%', top: isMobile ? '29%' : '22%', maxWidth: isMobile ? '172px' : '240px' }}>
                 {visibleBubbles[1] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -912,11 +1033,22 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
                     style={bubbleStyle(true, bubbleColorLow)}
                   >
                     {bubbleTexts[1]}
-                    {bubbleTexts[1].length > 0 && bubbleTexts[1].length < DIALOGUE[1].text.length && (
-                      <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-                    )}
                     <div style={{ position: 'absolute', bottom: '-10px', right: '20px', width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '10px solid white' }} />
                     <div style={{ position: 'absolute', bottom: '-13px', right: '18px', width: 0, height: 0, borderLeft: '10px solid transparent', borderRight: '10px solid transparent', borderTop: `12px solid ${bubbleColorLow}` }} />
+                  </motion.div>
+                )}
+              </div>
+              {/* "Promise!" — stays at the position the whole group used to sit at */}
+              <div style={{ position: 'absolute', left: isMobile ? '15%' : '19%', top: isMobile ? '37%' : '31%', maxWidth: isMobile ? '160px' : '240px' }}>
+                {visibleBubbles[2] && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    style={bubbleStyle(false, bubbleColorHigh)}
+                  >
+                    {bubbleTexts[2]}
+                    <div style={{ position: 'absolute', bottom: '-10px', left: '20px', width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '10px solid white' }} />
+                    <div style={{ position: 'absolute', bottom: '-13px', left: '18px', width: 0, height: 0, borderLeft: '10px solid transparent', borderRight: '10px solid transparent', borderTop: `12px solid ${bubbleColorHigh}` }} />
                   </motion.div>
                 )}
               </div>
@@ -945,14 +1077,17 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
                   Tap to go forward →
                 </div>
               )}
-              <NodeStats nodes={statsNodes} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={true} startTyping={step1NoticeDone} skipSignal={skipTypingSignal} />
-              <div style={{ position: 'absolute', bottom: '0.8rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.4rem' }}>
+              {currentStep >= 1 && (
+                <NodeStats nodes={statsNodes} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={true} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} mobileBottomOffset="2.1rem" />
+              )}
+              <div style={{ position: 'absolute', bottom: '2.6rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.4rem' }}>
                 {STEPS.map((_, i) => (
                   <div key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />
                 ))}
               </div>
             </>
           )}
+        </div>
         </div>
       </div>
     </div>

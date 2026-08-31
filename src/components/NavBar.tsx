@@ -1,30 +1,30 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile'
-import type { Mode } from '../App'
-import ToggleSwitch from './ToggleSwitch'
 
 const SECTIONS = [
-  { id: 'graph-k3', label: 'Grades K-3' },
-  { id: 'graph-45', label: 'Grades 3-5' },
+  { id: 'graph-elementary', label: 'Grades K-5' },
   { id: 'graph-68', label: 'Grades 6-8' },
   { id: 'graph-912', label: 'Grades 9-12' },
 ]
 
 interface Props {
-  mode: Mode
-  onToggleMode: () => void
-  // True once the user has actually clicked Conclusion's own bottom
-  // SES/Race toggle (the "start over" action) — NOT tied to Conclusion
-  // merely finishing its reveal animation. The nav bar's first-ever
-  // auto-reveal only happens once this is true AND the user has then
-  // scrolled down from the resulting restarted landing page (see
-  // navUnlocked below); it stays true for the rest of the session
-  // afterward regardless of further toggles.
-  hasToggledFromConclusion: boolean
+  // True once Conclusion's own dot condense-then-explode transition has
+  // actually finished and its content is showing — see Conclusion.tsx's
+  // onRevealed prop. Triggers the bar's one-time auto-reveal on desktop.
+  // Doesn't gate anything afterward — once shown this way, 'N' is free to
+  // hide/show it same as any other time.
+  reachedConclusion: boolean
   // Called right before scrollToSection jumps, with the target section's
   // id — see App.tsx's skipAnimationsUpTo for why the id matters (only
   // sections before the destination should be skipped, not everything).
   onNavigate?: (id: string) => void
+  // Reports the bar's own current desktop visibility back up to App.tsx,
+  // which uses it to bump the persistent top-right toggle down when the
+  // bar is showing (so the two don't overlap) and back to its normal spot
+  // when it's hidden. Mobile always reports false here — the hamburger
+  // sits in its own fixed spot below the toggle instead of pushing it,
+  // and never hides once mounted, so there's nothing to react to there.
+  onVisibilityChange?: (visible: boolean) => void
 }
 
 // Rendered as a sibling of ArticleSection in App.tsx, NOT nested inside it —
@@ -34,33 +34,19 @@ interface Props {
 // doesn't perfectly pin inside the transformed wrapper" issue already
 // documented elsewhere in this codebase — keeping this component outside
 // that tree entirely avoids it rather than working around it.
-export default function NavBar({ mode, onToggleMode, hasToggledFromConclusion, onNavigate }: Props) {
+export default function NavBar({ reachedConclusion, onNavigate, onVisibilityChange }: Props) {
   const isMobile = useIsMobile()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [tooltipVisible, setTooltipVisible] = useState(false)
   // Desktop-only concept: whether the user currently wants the bar shown.
-  // 'N' flips this at ANY time, completely independent of
-  // hasToggledFromConclusion/navUnlocked — those two only ever drive
-  // automatic reveals, never gate 'N' itself.
+  // 'N' flips this at ANY time — including right at the very first scroll
+  // through the site, not gated behind having reached the conclusion or
+  // scrolled past the landing page. reachedConclusion below only ever
+  // drives the one-time automatic reveal, never gates 'N' itself.
   const [barVisible, setBarVisible] = useState(false)
-  // Direct scroll-position check — deliberately NOT App.tsx's curtainDone,
-  // which only flips via a scroll CHANGE event and can get stuck false if
-  // the page reloads while already scrolled down (browsers restore scroll
-  // position on reload, so no "change" ever fires past that threshold).
-  const [atLandingPage, setAtLandingPage] = useState(true)
-  const prevAtLandingPageRef = useRef(true)
-  // Becomes true (permanently, for the rest of the session) the first
-  // time the user scrolls down from the landing page after having clicked
-  // Conclusion's toggle at least once. From then on, EVERY subsequent
-  // "just scrolled down from the landing page" moment force-reveals the
-  // bar again (see the effect below) — matching "it just will always drop
-  // in after scrolling down from the landing page" once unlocked.
-  const [navUnlocked, setNavUnlocked] = useState(false)
 
-  // Always active, regardless of platform — a plain, unconditional toggle,
-  // independent of hasToggledFromConclusion/navUnlocked entirely. Harmless
-  // on touch devices; nobody's pressing a physical key there anyway, and
-  // mobile's own shouldShow below ignores barVisible regardless.
+  // Always active, regardless of platform — a plain, unconditional toggle.
+  // Harmless on touch devices; nobody's pressing a physical key there
+  // anyway, and mobile's own hamburger below ignores barVisible entirely.
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'n' || e.key === 'N') {
@@ -71,45 +57,18 @@ export default function NavBar({ mode, onToggleMode, hasToggledFromConclusion, o
     return () => window.removeEventListener('keydown', handleKey)
   }, [])
 
+  // One-time auto-reveal once the conclusion's own reveal has actually
+  // finished. Doesn't force it to STAY visible afterward — barVisible is
+  // just regular state from here, free to toggle via 'N' like normal.
   useEffect(() => {
-    const checkScroll = () => {
-      // Rough, robust heuristic for "still essentially at the landing
-      // screen" — doesn't need to be pixel-perfectly synced to the exact
-      // curtain-drop scroll point, just needs to reliably catch "scrolled
-      // back near the very top."
-      setAtLandingPage(window.scrollY < window.innerHeight * 0.5)
-    }
-    checkScroll()
-    window.addEventListener('scroll', checkScroll, { passive: true })
-    return () => window.removeEventListener('scroll', checkScroll)
-  }, [])
+    if (reachedConclusion) setBarVisible(true)
+  }, [reachedConclusion])
 
-  // Edge-detects "just scrolled down from the landing page" (a
-  // true→false transition, not just "currently not at the landing page")
-  // so this only fires once per departure from the landing screen, not on
-  // every scroll tick while already below it.
+  // Desktop only — mobile's hamburger has its own fixed position below the
+  // toggle and doesn't push it around, so there's nothing to report there.
   useEffect(() => {
-    const justLeftLanding = prevAtLandingPageRef.current && !atLandingPage
-    if (justLeftLanding) {
-      if (hasToggledFromConclusion) {
-        setNavUnlocked(true)
-        setBarVisible(true)
-      } else if (navUnlocked) {
-        // Already unlocked from an earlier pass this session — every
-        // subsequent departure from the landing page re-reveals it too.
-        setBarVisible(true)
-      }
-    }
-    prevAtLandingPageRef.current = atLandingPage
-  }, [atLandingPage, hasToggledFromConclusion, navUnlocked])
-
-  // Desktop: 'N'/barVisible works any time, landing page always overrides
-  // to hidden. Mobile: no manual toggle at all — purely navUnlocked plus
-  // landing-page, matching "hamburger is always visible after scrolling
-  // down from the landing page, besides at the landing page."
-  const shouldShow = isMobile
-    ? navUnlocked && !atLandingPage
-    : barVisible && !atLandingPage
+    onVisibilityChange?.(!isMobile && barVisible)
+  }, [barVisible, isMobile, onVisibilityChange])
 
   const scrollToSection = (id: string) => {
     onNavigate?.(id)
@@ -118,38 +77,53 @@ export default function NavBar({ mode, onToggleMode, hasToggledFromConclusion, o
   }
 
   if (isMobile) {
+    // Only appears once the user has actually reached the conclusion (not
+    // as soon as curtainDone, which is what App.tsx mounts this component
+    // on) — then stays permanently, since reachedConclusion never flips
+    // back to false once true. Unlike desktop, there's no 'N'-key
+    // toggling of this at all on mobile; it's just this one-time reveal.
+    if (!reachedConclusion) return null
     return (
       <>
         <button
           onClick={() => setMobileOpen(v => !v)}
           aria-label="Open navigation"
           style={{
-            position: 'fixed', top: '1rem', right: '1rem', zIndex: 1000,
-            width: '46px', height: '46px', borderRadius: '10px',
-            backgroundColor: 'var(--color-bg)', border: '1px solid #111',
+            position: 'fixed', top: '4rem', right: '1.5rem', zIndex: 1000,
+            width: '42px', height: '42px', borderRadius: '10px',
+            backgroundColor: 'rgba(250, 249, 246, 0.82)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: 0,
-            transform: shouldShow ? 'translateY(0)' : 'translateY(-140%)',
-            opacity: shouldShow ? 1 : 0,
-            pointerEvents: shouldShow ? 'auto' : 'none',
-            transition: 'transform 0.4s ease, opacity 0.3s ease',
           }}
         >
-          <img src="/assets/hamburger.svg" style={{ width: '24px', height: '24px' }} />
+          <img src="/assets/hamburger.svg" style={{ width: '22px', height: '22px' }} />
         </button>
 
-        {mobileOpen && shouldShow && (
+        {mobileOpen && (
           <div
             onClick={() => setMobileOpen(false)}
-            style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.25)', zIndex: 998 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              // Transparent, not dark — this was both the unnecessary
+              // "dark rectangle" look and, very likely, the actual cause
+              // of Safari's own UI chrome darkening (it samples page
+              // color near its own edges; a fully transparent catcher
+              // here removes that at the source rather than trying to
+              // carefully inset a dark color away from it). Still catches
+              // taps outside the panel to close it — the panel's own
+              // boxShadow below provides the visual separation instead.
+              backgroundColor: 'transparent',
+              zIndex: 998,
+            }}
           />
         )}
 
         <div style={{
           position: 'fixed', top: 0, right: 0, height: '100%', width: '58%', maxWidth: '320px',
           backgroundColor: 'var(--color-bg)', zIndex: 999,
-          boxShadow: (mobileOpen && shouldShow) ? '-2px 0 12px rgba(0,0,0,0.15)' : 'none',
-          transform: (mobileOpen && shouldShow) ? 'translateX(0)' : 'translateX(100%)',
+          boxShadow: mobileOpen ? '-2px 0 12px rgba(0,0,0,0.15)' : 'none',
+          transform: mobileOpen ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform 0.35s ease',
           display: 'flex', flexDirection: 'column',
           padding: '5.5rem 1.6rem 2rem 1.6rem',
@@ -170,8 +144,6 @@ export default function NavBar({ mode, onToggleMode, hasToggledFromConclusion, o
               {s.label}
             </button>
           ))}
-          <div style={{ height: '1px', backgroundColor: '#111', width: '100%' }} />
-          <ToggleSwitch mode={mode} onToggle={onToggleMode} sesLabelColor="#111" raceLabelColor="#111" />
         </div>
       </>
     )
@@ -185,9 +157,9 @@ export default function NavBar({ mode, onToggleMode, hasToggledFromConclusion, o
       padding: '1.1rem 2rem',
       borderBottom: '1px solid #111',
       fontFamily: "'Kiwi Maru', serif",
-      transform: shouldShow ? 'translateY(0)' : 'translateY(-100%)',
-      opacity: shouldShow ? 1 : 0,
-      pointerEvents: shouldShow ? 'auto' : 'none',
+      transform: barVisible ? 'translateY(0)' : 'translateY(-100%)',
+      opacity: barVisible ? 1 : 0,
+      pointerEvents: barVisible ? 'auto' : 'none',
       transition: 'transform 0.4s ease, opacity 0.3s ease',
     }}>
       <span style={{ fontSize: '0.8rem', color: '#111', flexShrink: 0 }}>
@@ -205,24 +177,6 @@ export default function NavBar({ mode, onToggleMode, hasToggledFromConclusion, o
             {s.label}
           </button>
         ))}
-
-        <div
-          onMouseEnter={() => setTooltipVisible(true)}
-          onMouseLeave={() => setTooltipVisible(false)}
-          style={{ position: 'relative' }}
-        >
-          <ToggleSwitch mode={mode} onToggle={onToggleMode} sesLabelColor="#111" raceLabelColor="#111" scale={0.62} />
-          {tooltipVisible && (
-            <div style={{
-              position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-              marginTop: '0.6rem', backgroundColor: '#111', color: '#fff',
-              padding: '0.4rem 0.8rem', borderRadius: '6px', fontSize: '0.78rem',
-              whiteSpace: 'nowrap', pointerEvents: 'none',
-            }}>
-              Or toggle using the 'R' key
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )

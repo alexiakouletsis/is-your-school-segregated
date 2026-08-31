@@ -160,11 +160,16 @@ export const applyHoverHighlight = (
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
   hoveredNode: number | null,
   activeEdges: Edge[],
-  currentStep?: number
+  useLargeRadius?: boolean
 ) => {
   if (hoveredNode === null) {
-    svg.selectAll<SVGCircleElement, Node>('circle').attr('opacity', 1).attr('r', currentStep === 1 ? 10 : 6)
+    svg.selectAll<SVGCircleElement, Node>('circle').attr('opacity', 1).attr('r', useLargeRadius ? 10 : 6)
     svg.selectAll<SVGLineElement, Edge>('line').attr('stroke-opacity', 0.4)
+    // Protagonist face images — separate from the circle selector above
+    // since <image> elements never matched it at all, which is exactly
+    // why these always stayed full opacity regardless of hover state
+    // even when hovering a node with no connection to the protagonist.
+    svg.selectAll<SVGImageElement, Node>('image').attr('opacity', 1)
     return
   }
   const connectedIds = new Set<number>([hoveredNode])
@@ -176,11 +181,13 @@ export const applyHoverHighlight = (
   })
   svg.selectAll<SVGCircleElement, Node>('circle')
     .attr('opacity', d => connectedIds.has(d.id) ? 1 : 0.15)
-    .attr('r', d => d.id === hoveredNode ? 9 : (currentStep === 1 ? 10 : 6))
+    .attr('r', d => d.id === hoveredNode ? 9 : (useLargeRadius ? 10 : 6))
   svg.selectAll<SVGLineElement, Edge>('line')
     .attr('stroke-opacity', d => {
       const src = typeof d.source === 'object' ? (d.source as Node).id : d.source as number
       const tgt = typeof d.target === 'object' ? (d.target as Node).id : d.target as number
       return (src === hoveredNode || tgt === hoveredNode) ? 0.8 : 0.05
     })
+  svg.selectAll<SVGImageElement, Node>('image')
+    .attr('opacity', d => connectedIds.has(d.id) ? 1 : 0.15)
 }

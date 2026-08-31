@@ -79,6 +79,24 @@ body {
   animation: accentFadeIn 0.5s ease;
 }
 
+/* Stop-motion-style jitter — small, slightly irregular translate/rotate
+   steps rather than a smooth loop, giving a hand-drawn/hand-held feel.
+   Used on the Conclusion signature svg. Magnitude bumped up twice now:
+   first from an initial pass (0.3-0.5px/0.3-0.5deg) that turned out to be
+   sub-pixel enough to not actually render visibly at all, then again here
+   to be more clearly noticeable rather than just barely-there. */
+@keyframes subtleStopMotion {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  20%  { transform: translate(1.8px, -1.4px) rotate(-1.5deg); }
+  45%  { transform: translate(-1.4px, 1.7px) rotate(1.2deg); }
+  70%  { transform: translate(1.5px, 1.1px) rotate(-1deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+.subtle-stop-motion {
+  animation: subtleStopMotion 2.6s steps(4, jump-none) infinite;
+}
+
 .nav-link:hover {
   text-decoration: underline !important;
 }

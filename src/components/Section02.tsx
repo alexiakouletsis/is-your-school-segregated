@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { motion } from 'framer-motion'
+import { useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { Mode } from '../App'
 
@@ -117,17 +116,7 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
     lastOpacityRef.current = new Array(count).fill(-1)
   }, [isMobile])
 
-  // typing state
-  const [paraText, setParaText] = useState('')
-  const [typingDone, setTypingDone] = useState(false)
-  const [skipped, setSkipped] = useState(false)
-  const [showScroll, setShowScroll] = useState(false)
-  const typingStarted = useRef(false)
-  const typingDoneRef = useRef(false)
-  const lockScrollY = useRef<number | null>(null)
-  const paraInterval = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  useEffect(() => { typingDoneRef.current = typingDone }, [typingDone])
 
   useEffect(() => {
     const colors = mode === 'race' ? RACE_COLORS : SES_COLORS
@@ -198,12 +187,6 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
           }
         })
       }
-
-      // when dots are done fading, start typing + lock scroll
-      if (p >= 0.9 && !typingStarted.current) {
-        typingStarted.current = true
-        lockScrollY.current = window.scrollY
-      }
     }
 
     const handleScroll = () => {
@@ -232,71 +215,6 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
     // change, not through this imperative closure.
   }, [dots, isMobile, dotColors])
 
-  // scroll lock while typing (desktop only — mobile keeps scrolling freely,
-  // with the typing animation just playing out in the background)
-  useEffect(() => {
-    if (isMobile) return
-    if (lockScrollY.current === null || typingDone) return
-    const preventScroll = (e: Event) => {
-      if (!typingDoneRef.current) {
-        e.preventDefault()
-        window.scrollTo(0, lockScrollY.current ?? 0)
-      }
-    }
-    window.addEventListener('wheel', preventScroll, { passive: false })
-    window.addEventListener('touchmove', preventScroll, { passive: false })
-    return () => {
-      window.removeEventListener('wheel', preventScroll)
-      window.removeEventListener('touchmove', preventScroll)
-    }
-  }, [lockScrollY.current, typingDone, isMobile])
-
-  // start typing when triggered
-  useEffect(() => {
-    if (!typingStarted.current || skipped) return
-    const t = setTimeout(() => {
-      paraInterval.current = setInterval(() => {
-        setParaText(prev => {
-          const next = PARA.slice(0, prev.length + 1)
-          if (next.length === PARA.length) {
-            clearInterval(paraInterval.current!)
-            setTypingDone(true)
-            setShowScroll(true)
-          }
-          return next
-        })
-      }, 22)
-    }, 400)
-    return () => clearTimeout(t)
-  }, [typingStarted.current, skipped])
-
-  const skipAll = useCallback(() => {
-    if (skipped || typingDone) return
-    // Normally only reachable once typingStarted.current is already true
-    // (the onClick that calls this is gated on it) — set explicitly here
-    // too so this is safe to call externally, before that would have
-    // happened naturally. Without it, paraText would be set to the full
-    // text but never actually render, since the text layer reads
-    // `typingStarted.current ? paraText : ''`.
-    typingStarted.current = true
-    setSkipped(true)
-    clearInterval(paraInterval.current!)
-    setParaText(PARA)
-    setTypingDone(true)
-    setShowScroll(true)
-  }, [skipped, typingDone])
-
-  // External trigger for the same skip a click already does — see
-  // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
-  // dev-mode double-invoke the same way ArticleSection's forceStart is.
-  const lastSkipSignalRef = useRef(skipSignal)
-  useEffect(() => {
-    if (skipSignal === undefined) return
-    if (skipSignal === lastSkipSignalRef.current) return
-    lastSkipSignalRef.current = skipSignal
-    skipAll()
-  }, [skipSignal, skipAll])
-
   const getDotOpacity = (dot: Dot, p: number) => {
     const yFrac = dot.y / 100
     const revealStart = (1 - yFrac) * 0.15
@@ -319,7 +237,6 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
   return (
     <div
       ref={containerRef}
-      onClick={typingStarted.current && !typingDone ? skipAll : undefined}
       style={{
         height: '300vh',
         position: 'relative',
@@ -363,7 +280,7 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
         // has scrolled well past GraphSection45 there's no visible
         // difference from before.
         backgroundColor: 'transparent',
-        cursor: typingStarted.current && !typingDone ? 'default' : 'auto',
+        cursor: 'auto',
         ...(isMobile ? { overflowAnchor: 'none' as const, willChange: 'transform' } : {}),
       }}>
 
@@ -379,13 +296,6 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
           zIndex: 0,
           opacity: textOpacity,
         }}>
-          <div style={{
-            height: '1px',
-            backgroundColor: '#111',
-            width: '100%',
-            position: 'absolute',
-            top: 0,
-          }} />
 
           <h2 style={{
             fontFamily: "'Gaegu', cursive",
@@ -409,10 +319,7 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
             height: isMobile ? '22em' : '11em',
             overflow: 'hidden',
           }}>
-            {typingStarted.current ? paraText : ''}
-            {paraText.length > 0 && paraText.length < PARA.length && (
-              <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-            )}
+            {PARA}
           </p>
 
           <div style={{
@@ -422,35 +329,14 @@ export default function Section02({ mode, skipSignal }: { mode: Mode; skipSignal
             gap: isMobile ? '0.5rem' : '0rem',
             width: '100%',
             maxWidth: '900px',
-            marginTop: isMobile ? '-1rem' : '3.5rem',
+            marginTop: isMobile ? '0rem' : '2.5rem',
           }}>
-            <motion.div
-              onClick={() => showScroll && window.scrollBy({ top: window.innerHeight * 1.35, behavior: 'smooth' })}
-            className="scroll-cue"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: showScroll ? 1 : 0 }}
-              transition={{ duration: 1, delay: 0.5 }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.75rem',
-                fontFamily: "'Gaegu', cursive",
-                fontSize: 'clamp(1.1rem, 2.5vw, 1.6rem)',
-                color: '#111',
-                cursor: showScroll ? 'pointer' : 'default',
-                pointerEvents: showScroll ? 'auto' : 'none',
-              }}
-            >
-              <span className="scroll-cue-text">scroll</span>
-              <img src="/assets/down-scroll-arrow.svg" style={{ width: isMobile ? '1.25rem' : '1.4rem', height: 'auto' }} />
-            </motion.div>
-
             <div style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               width: '100%',
+              maxWidth: isMobile ? '85%' : '92%',
               padding: isMobile ? '0.5rem 0' : '1rem 0',
             }}>
               <img

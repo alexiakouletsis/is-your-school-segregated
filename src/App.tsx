@@ -2,40 +2,68 @@ import { useState, useEffect, useRef } from 'react'
 import Hero from './components/Hero'
 import ArticleSection from './components/ArticleSection'
 import NavBar from './components/NavBar'
+import ToggleSwitch from './components/ToggleSwitch'
+import { useIsMobile } from './hooks/useIsMobile'
 
 export type Mode = 'ses' | 'race'
 
-// Every image the pre-curtain landing screen actually renders (both
-// mode variants, since mode can toggle later and this only needs to run
-// once) — the professor's "takes a bit of scrolling to see things change"
-// note traces to BlobCurtain.tsx measuring the pink/green dot images'
-// real rendered position via getBoundingClientRect(): if those are still
-// 0-size (not yet loaded) when the user starts interacting, the blob's
-// origin point is wrong until the image's load event fires and it
-// re-measures. Preloading these up front means that race can't happen —
-// by the time scrolling is possible, they're already loaded.
+// Every image the pre-curtain landing screen actually renders (both mode
+// variants, since mode can toggle later and this only needs to run once).
+// Preloaded so BlobCurtain's pink/green dot-position measurement (which
+// depends on these images having already loaded) can't race against a
+// slow network — see the loading-screen effect below for the full
+// reasoning.
 const LANDING_ASSETS = [
   '/assets/sparkle-sketch.svg',
   '/assets/heart-sketch.svg',
   '/assets/plane-sketch.svg',
   '/assets/pencil-sketch.svg',
-  '/assets/butterfly-sketch.svg',
   '/assets/stars-sketch.svg',
   '/assets/apple-sketch.svg',
+  '/assets/butterfly-sketch.svg',
   '/assets/pink-dot-on-i.svg',
   '/assets/orange-dot-on-i.svg',
   '/assets/green-dot-on-q.svg',
   '/assets/blue-dot-on-q.svg',
-  '/assets/tap-icon.svg',
-  '/assets/down-scroll-arrow.svg',
+  '/assets/button.svg',
 ]
 
 function App() {
+  const isMobile = useIsMobile()
+  // Hover tooltip ("Or toggle using the 'R' key") for the new persistent
+  // top-right toggle — moved here from NavBar.tsx (currently not rendered)
+  // along with the toggle itself. Desktop-only, matching the original —
+  // there's no hover on touch devices to show it from anyway.
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+  // Tracks whether any graph section currently considers itself "in the
+  // graph part" (not the intro/settle phase before it) — drives the
+  // toggle's drop shadow. Each graph section (GraphSectionRepelAttract,
+  // the merged elementary section, future ones) dispatches its own
+  // 'graphSectionActive' custom event with {id, active} whenever its own
+  // showPanel-equivalent state changes, rather than App.tsx trying to
+  // infer this from DOM geometry — geometric intersection was fooled by
+  // GraphSectionRepelAttract's own negative-margin overlap trick (its
+  // wrapper deliberately overlaps the preceding intro text so its nodes
+  // are visible early), which meant its bounding box was "intersecting"
+  // well before showPanel ever actually turned true.
+  const [isInGraphSection, setIsInGraphSection] = useState(false)
+  useEffect(() => {
+    const activeSections = new Set<string>()
+    const handler = (e: Event) => {
+      const { id, active } = (e as CustomEvent<{ id: string, active: boolean }>).detail
+      if (active) activeSections.add(id)
+      else activeSections.delete(id)
+      setIsInGraphSection(activeSections.size > 0)
+    }
+    window.addEventListener('graphSectionActive', handler)
+    return () => window.removeEventListener('graphSectionActive', handler)
+  }, [])
+
   // Gates scrolling until the landing page's own assets (images + fonts)
-  // are actually ready — see LANDING_ASSETS above for why. Starts false;
-  // the effect below flips it true once everything's loaded, or after a
-  // 4s safety-net timeout regardless, so a slow/failed asset can never
-  // leave this stuck on a permanent loading screen.
+  // are actually ready. Purely as-needed — no artificial minimum display
+  // time — it just waits for the real assets/fonts, or a 5s safety-net
+  // timeout regardless, so a slow/failed asset can never leave this stuck
+  // on a permanent loading screen.
   const [assetsReady, setAssetsReady] = useState(false)
   useEffect(() => {
     let cancelled = false
@@ -50,31 +78,13 @@ function App() {
     const fontsPromise = typeof document !== 'undefined' && document.fonts
       ? document.fonts.ready
       : Promise.resolve()
-    // Minimum display time for the loading screen, regardless of how fast
-    // assets actually load — an experiment to see whether just giving
-    // everything (React's own initial render/layout included, not just
-    // network requests) more time to settle before scrolling is possible
-    // resolves the "takes a bit of scrolling" issue, since the asset-only
-    // wait alone didn't.
-    const minDelayPromise = new Promise<void>(resolve => setTimeout(resolve, 3000))
-    const readyPromise = Promise.all([...imagePromises, fontsPromise, minDelayPromise])
-    const timeoutPromise = new Promise<void>(resolve => setTimeout(resolve, 8000))
-    Promise.race([
-      readyPromise,
-      timeoutPromise,
-    ]).then(() => {
+    const readyPromise = Promise.all([...imagePromises, fontsPromise])
+    const timeoutPromise = new Promise<void>(resolve => setTimeout(resolve, 5000))
+    Promise.race([readyPromise, timeoutPromise]).then(() => {
       if (!cancelled) setAssetsReady(true)
     })
     return () => { cancelled = true }
   }, [])
-
-  // Actually prevents scrolling during the loading screen (not just visual
-  // cover) — otherwise a fast/impatient scroll attempt during that window
-  // could still race ahead of the images finishing.
-  useEffect(() => {
-    document.body.style.overflow = assetsReady ? '' : 'hidden'
-    return () => { document.body.style.overflow = '' }
-  }, [assetsReady])
 
   const [curtainDone, setCurtainDone] = useState(false)
   // Forces a full unmount/remount of <Hero> (and everything inside it,
@@ -87,42 +97,12 @@ function App() {
   // guarantee every one of them returns to its pristine initial value,
   // without needing to enumerate and verify each piece of state by hand.
   const [heroResetKey, setHeroResetKey] = useState(0)
-  // Ambient scroll feedback: a thin fixed bar at the very top of the
-  // viewport showing overall progress through the whole page. Exists
-  // because scrollbars are sometimes invisible by default (e.g. macOS
-  // auto-hides trackpad scrollbars until actively scrolling) with nothing
-  // in this codebase controlling that — it's OS behavior, not something
-  // fixable here — and because several sections intentionally block
-  // forward scroll during an intro animation, which without any feedback
-  // can read as "the page just isn't responding" rather than "there's an
-  // animation still playing." This is a pure read of window.scrollY —
-  // it doesn't write to or interact with any of those per-section
-  // wheel-lock mechanisms, so it can't affect their behavior.
-  const [scrollProgress, setScrollProgress] = useState(0)
-  useEffect(() => {
-    // Polling via requestAnimationFrame rather than the 'scroll' event —
-    // scroll events can fire in bursty, uneven chunks depending on input
-    // device/browser (especially trackpad momentum scrolling), which read
-    // as the bar visibly jumping in steps rather than gliding smoothly.
-    // Sampling every animation frame instead ties the update rate to
-    // actual rendering, which is what makes it look continuous.
-    let rafId: number
-    const update = () => {
-      const scrollable = document.documentElement.scrollHeight - window.innerHeight
-      setScrollProgress(scrollable > 0 ? Math.min(1, window.scrollY / scrollable) : 0)
-      rafId = requestAnimationFrame(update)
-    }
-    rafId = requestAnimationFrame(update)
-    return () => cancelAnimationFrame(rafId)
-  }, [])
   const [forceSection01Start, setForceSection01Start] = useState(0)
   const [curtainDropping, setCurtainDropping] = useState(false)
   const [mobilePressed, setMobilePressed] = useState(false)
   const [typingDone, setTypingDone] = useState(false)
   const [sectionAnimDone, setSectionAnimDone] = useState(false)
   const [sectionOverlaySettled, setSectionOverlaySettled] = useState(false)
-  const [part2AnimDone, setPart2AnimDone] = useState(false)
-  const [part2OverlaySettled, setPart2OverlaySettled] = useState(false)
   const [section03Part2AnimDone, setSection03Part2AnimDone] = useState(false)
   const [section03Part2OverlaySettled, setSection03Part2OverlaySettled] = useState(false)
   const [mode, setMode] = useState<Mode>('ses')
@@ -130,31 +110,87 @@ function App() {
   // comment on handleToggleModeAndScrollTop below for why this is kept
   // separate from `mode` itself.
   const [graphResetSignal, setGraphResetSignal] = useState(0)
-  // Once true, stays true — the nav bar is a one-time milestone unlock
-  // ("you've reached the conclusion"), not tied to current scroll
-  // position, so it stays available even after scrolling back up.
-  // Set once the user actually clicks Conclusion's own bottom SES/Race
-  // toggle (the "start over" action) — NOT when Conclusion merely finishes
-  // animating in. The nav bar's first-ever auto-reveal is tied to this
-  // plus scrolling down from the resulting restarted landing page, not to
-  // Conclusion's animation completing on its own.
-  const [hasToggledFromConclusion, setHasToggledFromConclusion] = useState(false)
+  // True once Conclusion's own dot condense-then-explode reveal has
+  // actually finished (see Conclusion.tsx's onRevealed prop, forwarded
+  // through ArticleSection) — drives NavBar's one-time auto-reveal.
+  // Replaces the old hasToggledFromConclusion, which was tied to
+  // Conclusion's own bottom toggle — that toggle no longer exists now
+  // that the persistent top-right toggle covers the same need from the
+  // very start of the article, so the trigger moved to "reached the
+  // conclusion" instead of "clicked its toggle."
+  const [reachedConclusion, setReachedConclusion] = useState(false)
+  // Reported by NavBar itself (desktop only — see its own comment) so the
+  // persistent toggle can be bumped down while the bar is showing, rather
+  // than the two overlapping.
+  const [navBarVisible, setNavBarVisible] = useState(false)
   // Each bumped independently by skipAnimationsUpTo below — separate
   // counters (not one shared signal) so each freeze-gated section can be
   // skipped INDEPENDENTLY depending on where the user actually clicked.
   // See skipAnimationsUpTo's own comment for why that distinction matters.
   const [skipSection01Signal, setSkipSection01Signal] = useState(0)
-  const [skipPart2Signal, setSkipPart2Signal] = useState(0)
   const [skipSection02Signal, setSkipSection02Signal] = useState(0)
   const [skipSection03IntroSignal, setSkipSection03IntroSignal] = useState(0)
   const [skipSection03Part2Signal, setSkipSection03Part2Signal] = useState(0)
+
+  // Actually prevents scrolling — not just a visual cover — through the
+  // entire sequence: the loading screen, the landing page before the
+  // button is clicked, the growth+curtain-drop animation, and the intro's
+  // own typing. Previously there was a real gap here: nothing blocked
+  // scroll at all before the button was clicked (the old scroll-driven
+  // desktop growth doubled as an implicit lock; the old mobile overlay
+  // doubled as one too, both now gone), so a user could scroll straight
+  // past the whole landing/intro sequence without ever interacting with
+  // it. overflow:hidden blocks every input method uniformly (wheel, touch,
+  // keyboard) with zero drift possible, rather than the wheel-only
+  // preventDefault+snapback approach used for later sections below (which
+  // can still allow a small amount of drift before correcting).
+  useEffect(() => {
+    const locked = !assetsReady || !typingDone
+    // Both html and body — in some browsers/doctypes the actual
+    // scrolling element is <html>, not <body>, so locking only one can
+    // still leave scrolling possible depending on which one the browser
+    // treats as the real scroll container.
+    document.documentElement.style.overflow = locked ? 'hidden' : ''
+    document.body.style.overflow = locked ? 'hidden' : ''
+    return () => {
+      document.documentElement.style.overflow = ''
+      document.body.style.overflow = ''
+    }
+  }, [assetsReady, typingDone])
+
+  // Supplements the overflow:hidden lock above specifically for touch
+  // devices — overflow:hidden on body doesn't always fully suppress touch
+  // scroll/rubber-banding on every mobile browser (a known enough quirk
+  // that this codebase previously had a dedicated full-viewport overlay
+  // just to capture touches for this reason). Only touchmove is
+  // preventDefault'd here, not touchstart/touchend/click, so the button's
+  // own tap still reaches it normally — this blocks the scroll gesture
+  // specifically, not interaction in general.
+  useEffect(() => {
+    const blockTouchMove = (e: TouchEvent) => {
+      if (!assetsReady || !typingDone) e.preventDefault()
+    }
+    window.addEventListener('touchmove', blockTouchMove, { passive: false })
+    return () => window.removeEventListener('touchmove', blockTouchMove)
+  }, [assetsReady, typingDone])
+
+  // Same idea for mouse-wheel/trackpad scroll specifically — belt and
+  // suspenders alongside the overflow:hidden lock above, in case anything
+  // about the page's layout lets a wheel event slip through it.
+  useEffect(() => {
+    const blockWheel = (e: Event) => {
+      if (!assetsReady || !typingDone) e.preventDefault()
+    }
+    window.addEventListener('wheel', blockWheel, { passive: false })
+    return () => window.removeEventListener('wheel', blockWheel)
+  }, [assetsReady, typingDone])
 
   // Page order, as laid out in ArticleSection.tsx — only the entries that
   // matter for this: the four nav-jumpable graph ids, and every
   // freeze-gated section that sits somewhere between them. Numbers are
   // arbitrary, only their relative order matters.
   const PAGE_ORDER: Record<string, number> = {
-    section01: 0, 'graph-k3': 1, part2: 2, 'graph-45': 3, section02: 4,
+    section01: 0, 'graph-elementary': 1, section02: 4,
     'graph-68': 5, section03Intro: 6, section03Part2: 7, 'graph-912': 8,
   }
 
@@ -193,11 +229,6 @@ function App() {
       setSectionOverlaySettled(true)
       setSkipSection01Signal(v => v + 1)
     }
-    if (targetIndex > PAGE_ORDER.part2) {
-      setPart2AnimDone(true)
-      setPart2OverlaySettled(true)
-      setSkipPart2Signal(v => v + 1)
-    }
     if (targetIndex > PAGE_ORDER.section02) {
       setSkipSection02Signal(v => v + 1)
     }
@@ -209,27 +240,30 @@ function App() {
       setSection03Part2OverlaySettled(true)
       setSkipSection03Part2Signal(v => v + 1)
     }
+    // If the destination itself is a graph section, reset ONLY that one
+    // back to its first step — nav-jumping there should always start
+    // fresh, not resume wherever the user last left it. Scoped to just
+    // this one id (not graphResetSignal, which resets every graph section
+    // at once) since jumping to grades 6-8 has no business wiping out
+    // progress in grades 9-12 or K-5.
+    window.dispatchEvent(new CustomEvent('navResetGraphStep', { detail: { id: targetId } }))
   }
 
   const scrollLockPos = useRef<number | null>(null)
   const sectionLockPos = useRef<number | null>(null)
-  const part2LockPos = useRef<number | null>(null)
   const section03Part2LockPos = useRef<number | null>(null)
   const typingDoneRef = useRef(false)
   const sectionAnimDoneRef = useRef(false)
-  const part2AnimDoneRef = useRef(false)
   const section03Part2AnimDoneRef = useRef(false)
   const curtainDroppingRef = useRef(false)
   const curtainDoneRef = useRef(false)
   const sectionOverlaySettledRef = useRef(false)
-  const part2OverlaySettledRef = useRef(false)
   const section03Part2OverlaySettledRef = useRef(false)
   const typingAlreadyDoneRef = useRef(false)
 
 
   useEffect(() => { typingDoneRef.current = typingDone }, [typingDone])
   useEffect(() => { sectionAnimDoneRef.current = sectionAnimDone }, [sectionAnimDone])
-  useEffect(() => { part2AnimDoneRef.current = part2AnimDone }, [part2AnimDone])
   useEffect(() => { section03Part2AnimDoneRef.current = section03Part2AnimDone }, [section03Part2AnimDone])
   useEffect(() => { curtainDoneRef.current = curtainDone }, [curtainDone])
 
@@ -278,19 +312,15 @@ function App() {
     }
   }, [])
 
-  // Show overlay whenever curtainDone becomes false — not just once on
-  // initial mount. Previously this only ran on mount, so hideOverlay()
-  // setting display:'none' the first time the intro completed was never
-  // undone; after Conclusion's toggle later reset curtainDone back to
-  // false (to show the real landing screen again), nothing re-showed this
-  // overlay, silently breaking the mobile press-and-hold gesture it
-  // captures — touches just fell through with no listener to catch them.
-  useEffect(() => {
-    if (isMobileDevice() && !curtainDone) {
-      const el = getOverlay()
-      if (el) el.style.display = 'block'
-    }
-  }, [curtainDone])
+  // Previously showed the mobile-overlay div (z-index 99999, full-viewport)
+  // to capture the press-and-hold gesture. That gesture is gone — a single
+  // click/tap on Hero's new button triggers the intro directly now — so
+  // this no longer runs. Left the overlay element itself, hideOverlay(),
+  // and the listener-attaching effect above alone (harmless: an element
+  // that's never shown never receives events, so there's nothing to
+  // actually clean up), but if this effect still set display:'block' here,
+  // it would sit on top of the entire viewport and swallow every tap meant
+  // for the new button before it ever reached it.
 
   // Plain mode flip, no scroll/graph reset — shared by the 'R' key and the
   // nav bar's toggle. Deliberately the ONLY thing either of those does;
@@ -327,7 +357,6 @@ function App() {
   const TOGGLE_SLIDE_MS = 350
   const handleToggleModeAndScrollTop = () => {
     setMode(prev => prev === 'ses' ? 'race' : 'ses')
-    setHasToggledFromConclusion(true)
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: 'auto' })
       setGraphResetSignal(v => v + 1)
@@ -381,14 +410,6 @@ function App() {
   }, [sectionOverlaySettled])
 
   useEffect(() => {
-    if (!part2OverlaySettled) {
-      setPart2AnimDone(false)
-      part2OverlaySettledRef.current = false
-      part2LockPos.current = null
-    }
-  }, [part2OverlaySettled])
-
-  useEffect(() => {
     if (!section03Part2OverlaySettled) {
       setSection03Part2AnimDone(false)
       section03Part2OverlaySettledRef.current = false
@@ -396,19 +417,19 @@ function App() {
     }
   }, [section03Part2OverlaySettled])
 
-  // desktop wheel lock only
+  // desktop wheel lock only — for the LATER freeze-gated sections
+  // (Section 01, Section03Part2). The intro's own lock is no longer
+  // handled here at all — see the unified overflow:hidden effect above,
+  // which covers it more robustly (blocks touch scroll too, not just
+  // wheel, and allows zero drift rather than correcting after the fact).
   useEffect(() => {
     const handleWheel = (e: Event) => {
       if (isMobileDevice()) return
-      const introLocked = curtainDroppingRef.current && !typingDoneRef.current
       const section1Locked = sectionOverlaySettledRef.current && !sectionAnimDoneRef.current
-      const part2Locked = part2OverlaySettledRef.current && !part2AnimDoneRef.current
       const section03Part2Locked = section03Part2OverlaySettledRef.current && !section03Part2AnimDoneRef.current
-      if (introLocked || section1Locked || part2Locked || section03Part2Locked) {
+      if (section1Locked || section03Part2Locked) {
         e.preventDefault()
-        const target = introLocked ? (scrollLockPos.current ?? 0)
-          : section1Locked ? (sectionLockPos.current ?? 0)
-          : part2Locked ? (part2LockPos.current ?? 0)
+        const target = section1Locked ? (sectionLockPos.current ?? 0)
           : (section03Part2LockPos.current ?? 0)
         // preventDefault above already stops the native scroll from moving
         // in the vast majority of cases, so calling scrollTo unconditionally
@@ -482,26 +503,6 @@ function App() {
           </div>
         </div>
       )}
-      <div style={{
-        position: 'fixed',
-        top: 0, left: 0,
-        width: '100%',
-        height: '2px',
-        backgroundColor: 'transparent',
-        zIndex: 99999,
-        pointerEvents: 'none',
-        overflow: 'hidden',
-      }}>
-        <div style={{
-          height: '100%',
-          width: `${scrollProgress * 100}%`,
-          backgroundImage: mode === 'race'
-            ? "url('/assets/orangebluebar.svg')"
-            : "url('/assets/pinkgreenbar.svg')",
-          backgroundRepeat: 'repeat-x',
-          backgroundSize: 'auto 100%',
-        }} />
-      </div>
       <Hero
         key={heroResetKey}
         curtainDone={curtainDone}
@@ -588,22 +589,6 @@ function App() {
           sectionOverlaySettledRef.current = false
           setSectionOverlaySettled(false)
         }}
-        onPart2AnimDone={() => {
-          setPart2AnimDone(true)
-          // No tap gate on mobile anymore — keep scrolling straight through.
-        }}
-        onPart2OverlaySettled={(scrollY) => {
-          part2LockPos.current = scrollY
-          part2OverlaySettledRef.current = true
-          setPart2OverlaySettled(true)
-          // No mobile freeze here anymore — same treatment as Section 01's
-          // paragraph, this should just be freely scrollable on mobile.
-          // Desktop's wheel-lock still reads part2OverlaySettledRef below.
-        }}
-        onPart2AnimReset={() => {
-          part2OverlaySettledRef.current = false
-          setPart2OverlaySettled(false)
-        }}
         onSection03Part2AnimDone={() => {
           setSection03Part2AnimDone(true)
           // No tap gate on mobile — same treatment as the other body-text
@@ -619,21 +604,78 @@ function App() {
           setSection03Part2OverlaySettled(false)
         }}
         onToggleModeAndScrollTop={handleToggleModeAndScrollTop}
+        onRevealed={() => setReachedConclusion(true)}
         graphResetSignal={graphResetSignal}
         skipSection01Signal={skipSection01Signal}
-        skipPart2Signal={skipPart2Signal}
         skipSection02Signal={skipSection02Signal}
         skipSection03IntroSignal={skipSection03IntroSignal}
         skipSection03Part2Signal={skipSection03Part2Signal}
         mode={mode}
       />
-      {/* NavBar handles its own "hide at the landing page" detection
-          internally via direct scroll position — not curtainDone, which
-          only flips via a scroll CHANGE event and can get stuck false on a
-          page reload that starts already-scrolled-down. The first-ever
-          auto-reveal is tied to hasToggledFromConclusion plus scrolling
-          down from the landing page afterward (handled inside NavBar). */}
-      <NavBar mode={mode} onToggleMode={toggleMode} hasToggledFromConclusion={hasToggledFromConclusion} onNavigate={skipAnimationsUpTo} />
+      {/* Restored — now just 3 links (Grades K-5/6-8/9-12, no more split of
+          K-3 vs 3-5), no toggle inside it (the persistent top-right one
+          covers that from the very start now), and driven by
+          reachedConclusion instead of a toggle click that no longer
+          exists on Conclusion's own screen. onVisibilityChange reports
+          the bar's desktop visibility back here so the persistent toggle
+          can be bumped down while it's showing — see that logic below.
+          Gated on curtainDone, same as the persistent toggle right below
+          — NavBar.tsx's own mobile hamburger assumes it's always visible
+          once mounted, relying on this gate rather than its own internal
+          show/hide state for that. */}
+      {curtainDone && (
+        <NavBar reachedConclusion={reachedConclusion} onNavigate={skipAnimationsUpTo} onVisibilityChange={setNavBarVisible} />
+      )}
+
+      {/* Persistent top-right toggle — replaces the old "toggle only
+          appears in NavBar/at Conclusion" setup. Per feedback, race mode
+          should be discoverable from the very start of the actual content
+          (not just at the end), which is the whole point of this being
+          always visible rather than tucked into a nav bar or the
+          conclusion. Visible for the entire site EXCEPT the pre-click
+          landing page itself (gated on curtainDone, not on scroll
+          position, so it can't get stuck hidden the way NavBar's own
+          scroll-based detection could). The 'R' key hover hint is
+          desktop-only, moved here verbatim from NavBar.tsx. On desktop,
+          bumped down while NavBar is showing (navBarVisible, reported by
+          NavBar itself) so the two stack instead of overlapping — back to
+          its usual spot once NavBar hides. Mobile never sets
+          navBarVisible true (NavBar's hamburger sits in its own fixed
+          spot below this instead), so this has no effect there. */}
+      {curtainDone && (
+        <div
+          onMouseEnter={() => !isMobile && setTooltipVisible(true)}
+          onMouseLeave={() => setTooltipVisible(false)}
+          style={{
+            position: 'fixed',
+            top: navBarVisible ? '4.8rem' : '1.25rem',
+            right: '1.5rem',
+            zIndex: 9000,
+            backgroundColor: 'rgba(250, 249, 246, 0.82)',
+            borderRadius: '18px',
+            padding: isMobile ? '0.4rem 0.7rem' : '0.5rem 0.9rem',
+            boxShadow: isInGraphSection ? '0 4px 14px rgba(0,0,0,0.18)' : 'none',
+            // Same slight-enlarge affordance as the graph sections'
+            // "Skip to grade 3" button, and only while that same shadow
+            // is showing — reuses tooltipVisible (already tracking hover
+            // for the 'R' key hint) rather than adding separate state.
+            transform: (isInGraphSection && tooltipVisible) ? 'scale(1.05)' : 'scale(1)',
+            transition: 'box-shadow 0.3s ease, transform 0.15s ease, top 0.4s ease',
+          }}
+        >
+          <ToggleSwitch mode={mode} onToggle={toggleMode} sesLabelColor="#111" raceLabelColor="#111" scale={isMobile ? 0.62 : 1} />
+          {tooltipVisible && (
+            <div style={{
+              position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+              marginTop: '0.6rem', backgroundColor: '#111', color: '#fff',
+              padding: '0.4rem 0.8rem', borderRadius: '6px', fontSize: '0.78rem',
+              whiteSpace: 'nowrap', pointerEvents: 'none',
+            }}>
+              Or toggle using the 'R' key
+            </div>
+          )}
+        </div>
+      )}
     </main>
   )
 }

@@ -11,63 +11,103 @@ interface Props {
   mode: Mode
   pinkDotRef: React.RefObject<HTMLImageElement>
   greenDotRef: React.RefObject<HTMLImageElement>
-  mobilePressed: boolean
+  // Bumped (any increasing number) by the new "Click me"/"Tap me" button in
+  // Hero.tsx — this is now the ONLY way the intro plays, on both desktop
+  // and mobile. Previously desktop grew the blobs continuously as the user
+  // scrolled (scrollYProgress driving blobScalePink/blobScaleGreen/
+  // pinkRadius/greenRadius directly), and mobile grew them via a
+  // sustained press-and-hold gesture (mobilePressed). Both of those are
+  // gone — a single click/tap now plays the exact same fixed-duration
+  // growth+morph+drop sequence that mobile's press-and-hold used to,
+  // reused here for both platforms instead of just one.
+  manualTrigger: number
+  // Fires once the ENTIRE sequence (growth + curtain-drop) has actually
+  // finished — distinct from onCurtainDone, which fires at the START of
+  // the drop (so the intro content can mount underneath the still-falling
+  // curtain). Hero.tsx needs this specifically to know when it's actually
+  // safe to collapse its own wrapper — collapsing on onCurtainDone instead
+  // was the real cause of a visible bug: the bg-color panels and blob
+  // shapes are sized relative to that wrapper, so collapsing it before the
+  // 1450ms drop had actually played out left them stranded at the wrong
+  // size mid-animation, visible as leftover rectangles fading out after
+  // the curtain had already appeared to finish.
+  onSequenceComplete?: () => void
 }
 
-export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainReset, onCurtainDropping, mode, pinkDotRef, greenDotRef, mobilePressed }: Props) {
+export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainReset, onCurtainDropping, mode, pinkDotRef, greenDotRef, manualTrigger, onSequenceComplete }: Props) {
   const isMobile = useIsMobile()
 
   const color1 = mode === 'ses' ? 'var(--color-high-ses)' : 'var(--color-race-1)'
   const color2 = mode === 'ses' ? 'var(--color-low-ses)' : 'var(--color-race-2)'
 
-  const blobScalePink = useTransform(scrollYProgress, [0, 0.737], [1, 180])
-  const blobScaleGreen = useTransform(scrollYProgress, [0, 0.45], [1, 180])
-  const pinkRadius = useTransform(
-    scrollYProgress,
-    [0, 0.2, 0.35, 0.5, 0.75],
-    ['50%', '60% 40% 55% 45% / 50% 45% 55% 50%', '45% 55% 40% 60% / 55% 50% 45% 55%', '55% 45% 60% 40% / 45% 55% 50% 45%', '8%']
-  )
-  const greenRadius = useTransform(
-    scrollYProgress,
-    [0, 0.15, 0.25, 0.35, 0.45],
-    ['50%', '45% 55% 60% 40% / 55% 45% 50% 55%', '60% 40% 45% 55% / 45% 55% 60% 40%', '40% 60% 55% 45% / 60% 40% 45% 55%', '8%']
-  )
-  const initialDotsOpacity = useTransform(scrollYProgress, [0.35, 0.45], [1, 0])
-  const bgOpacity = useTransform(scrollYProgress, [0.42, 0.48], [0, 1])
   const [curtainPhase, setCurtainPhase] = useState<'hidden' | 'dropping' | 'done'>('hidden')
-  // Motion values instead of useState — Framer updates these directly on the
-  // DOM via its own scheduler, without triggering a React re-render on every
-  // tick the way the old setInterval+setState version did (that was a real
-  // source of mobile jank: a full re-render 60 times a second for the whole
-  // ~2s press-hold gesture).
-  const mobileBlobScale = useMotionValue(1)
-  const mobileBlobRadius = useMotionValue('50%')
+  // Motion values instead of useState — Framer updates these directly on
+  // the DOM via its own scheduler, without triggering a React re-render on
+  // every tick the way a setInterval+setState version would. Used for
+  // BOTH platforms now (previously mobile-only, desktop was scroll-driven
+  // via separate useTransform chains that have been removed — see the
+  // comment on the old blobScalePink/pinkRadius etc. this replaced).
+  const blobScale = useMotionValue(1)
+  const blobRadius = useMotionValue('50%')
   const growAnimRef = useRef<ReturnType<typeof animate> | null>(null)
   const radiusAnimRef = useRef<ReturnType<typeof animate> | null>(null)
   const hasTriggered = useRef(false)
   const hasLockedRef = useRef(false)
+  const lastManualTriggerRef = useRef(manualTrigger)
+
+  // Mirrors of the callback props, kept current via their own tiny
+  // effects below. The growth-trigger effect reads these instead of the
+  // props directly, specifically so it never needs onCurtainDropping/
+  // onCurtainDone/onCurtainReset in ITS OWN dependency array — those
+  // props are recreated as new inline functions on every Hero render
+  // (not memoized there), and React tears down + reruns an effect's
+  // cleanup whenever any listed dependency changes, even if the new
+  // effect body then does nothing. That was silently stopping the
+  // in-progress grow/radius animations on any ordinary Hero re-render
+  // that happened to land mid-animation (hovering the button, anything),
+  // which is what was actually cutting the animation short — a real bug,
+  // not a pacing issue.
+  const onCurtainDroppingRef = useRef(onCurtainDropping)
+  const onCurtainDoneRef = useRef(onCurtainDone)
+  const onCurtainResetRef = useRef(onCurtainReset)
+  const onSequenceCompleteRef = useRef(onSequenceComplete)
+  useEffect(() => { onCurtainDroppingRef.current = onCurtainDropping }, [onCurtainDropping])
+  useEffect(() => { onCurtainDoneRef.current = onCurtainDone }, [onCurtainDone])
+  useEffect(() => { onCurtainResetRef.current = onCurtainReset }, [onCurtainReset])
+  useEffect(() => { onSequenceCompleteRef.current = onSequenceComplete }, [onSequenceComplete])
 
   const [pinkOrigin, setPinkOrigin] = useState<{ top: string; left: string; size: number } | null>(null)
   const [greenOrigin, setGreenOrigin] = useState<{ top: string; left: string; size: number } | null>(null)
 
-  // Rendering the mobile blob div at its real tiny size (~12-16px) and
-  // scaling it up 180-270x via transform means that, if the browser
-  // promotes it to its own compositor layer (needed to avoid a trailing
-  // ghost artifact on release), it rasterizes that tiny bitmap once and
-  // stretches it enormously — visibly blurry. Rendering at a much larger
-  // fixed base instead, with a smaller compensating scale multiplier,
-  // reaches the exact same final pixel size with far less upscaling. These
-  // derived values don't touch mobileBlobScale's own semantics at all — the
-  // growth animation, thresholds, and trigger logic all still operate on
-  // the raw 1→270 value exactly as before; only the rendered CSS scale is
-  // rescaled per-blob to account for the larger base size.
-  const MOBILE_BLOB_CSS_BASE = 80
-  const pinkDisplayScale = useTransform(mobileBlobScale, (v) =>
-    pinkOrigin ? v * (pinkOrigin.size / MOBILE_BLOB_CSS_BASE) : v
+  // Rendering the blob div at its real tiny size (~12px) and scaling it up
+  // via transform means that, if the browser promotes it to its own
+  // compositor layer (needed to avoid a trailing ghost artifact), it
+  // rasterizes that tiny bitmap once and stretches it enormously —
+  // visibly blurry. Rendering at a much larger fixed base instead, with a
+  // smaller compensating scale multiplier, reaches the exact same final
+  // pixel size with far less upscaling.
+  const BLOB_CSS_BASE = 80
+  const pinkDisplayScale = useTransform(blobScale, (v) =>
+    pinkOrigin ? v * (pinkOrigin.size / BLOB_CSS_BASE) : v
   )
-  const greenDisplayScale = useTransform(mobileBlobScale, (v) =>
-    greenOrigin ? v * (greenOrigin.size / MOBILE_BLOB_CSS_BASE) : v
+  const greenDisplayScale = useTransform(blobScale, (v) =>
+    greenOrigin ? v * (greenOrigin.size / BLOB_CSS_BASE) : v
   )
+
+  // Back to the original fixed-target approach (a per-screen computed
+  // target didn't actually work out) — GROW_TARGET raised well past the
+  // original 180 specifically for extra coverage margin on wider/taller
+  // screens, and LOCKED_SCALE (what it snaps to right at completion, same
+  // idea as the original's 180->270 jump) raised to match.
+  const GROW_TARGET = 260
+  const LOCKED_SCALE = 350
+
+  // Background color halves and the (currently invisible/contentless,
+  // vestigial) initial-dots-fade layer — previously driven by
+  // scrollYProgress directly; now derived from blobScale instead, since
+  // growth is no longer scroll-linked at all.
+  const bgOpacity = useTransform(blobScale, [GROW_TARGET * 0.78, GROW_TARGET], [0, 1])
+  const initialDotsOpacity = useTransform(blobScale, [GROW_TARGET * 0.2, GROW_TARGET * 0.45], [1, 0])
 
   useEffect(() => {
     // Measure in raw pixels (matching getBoundingClientRect's own coordinate
@@ -134,101 +174,124 @@ export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainR
     }
   }, [pinkDotRef, greenDotRef, isMobile])
 
-  // press and hold blob expansion on mobile
+  // Single unified trigger for BOTH platforms — replaces the old
+  // press-and-hold effect (mobile) and the scroll-driven growth inside the
+  // effect below (desktop). manualTrigger starts at whatever value Hero.tsx
+  // initializes it to and only changes when the button is actually
+  // clicked/tapped, so the ref comparison below (not a boolean check)
+  // avoids firing on mount.
   useEffect(() => {
-    if (!isMobile) return
-    if (mobilePressed && curtainPhase === 'hidden' && !hasTriggered.current) {
-      radiusAnimRef.current?.stop()
-      growAnimRef.current?.stop()
+    if (manualTrigger === lastManualTriggerRef.current) return
+    lastManualTriggerRef.current = manualTrigger
+    if (hasTriggered.current) return
 
-      // Original grew by +1.5 every 16ms until reaching 180 — matches this
-      // duration: (180-1)/1.5 steps * 16ms ≈ 1.9s, linear.
-      growAnimRef.current = animate(mobileBlobScale, 180, {
-        duration: 1.9,
-        ease: 'linear',
-        onUpdate: (latest) => {
-          if (latest >= 180 && !hasTriggered.current) {
-            hasTriggered.current = true
-            hasLockedRef.current = true
-            growAnimRef.current?.stop()
-            mobileBlobScale.set(270)
-            onCurtainDropping()
-            // Mount the intro now (underneath the curtain, which sits above
-            // it in z-index — see below) so the curtain drop actually
-            // reveals something instead of being mounted only after the
-            // drop already finished off-screen. Matches the desktop flow.
-            onCurtainDone()
-            setCurtainPhase('dropping')
-            setTimeout(() => setCurtainPhase('done'), 1400)
-          }
-        },
-      })
+    radiusAnimRef.current?.stop()
+    growAnimRef.current?.stop()
 
-      // A single smooth morph instead of continuously cycling through all 5
-      // shapes on repeat — animating a complex organic border-radius forces
-      // a repaint every frame, and doing that continuously while the
-      // element simultaneously scales up to 180x was almost certainly the
-      // real source of the choppy trail (not just at release). One morph
-      // still reads as an organic blob forming, with far less repaint churn.
-      radiusAnimRef.current = animate(mobileBlobRadius, [
-        '50%',
-        '60% 40% 55% 45% / 50% 45% 55% 50%',
-        '45% 55% 40% 60% / 55% 50% 45% 55%',
-      ], {
-        duration: 1.9,
-        ease: 'easeInOut',
-      })
-    } else {
-      growAnimRef.current?.stop()
-      radiusAnimRef.current?.stop()
-      if (!hasTriggered.current) {
-        // Snap instantly rather than animate — interpolating between
-        // whatever complex organic shape it was mid-wobble and a plain
-        // '50%' produced a choppy trailing artifact, especially while the
-        // element is still huge from being scaled up. A clean circle
-        // shrinking smoothly looks better anyway.
-        mobileBlobRadius.set('50%')
-        animate(mobileBlobScale, 1, { duration: 0.3, ease: 'easeOut' })
-      }
-    }
+    // Original grew by +1.5 every 16ms until reaching 180 over ~1.9s —
+    // same idea, at a middle-ground pace (faster than the original, but
+    // not so fast the sequence blurs together) — and with
+    // GROW_TARGET/LOCKED_SCALE raised well past the original 180/270 for
+    // real coverage margin on wider/taller screens (see the constants'
+    // own comment above).
+    growAnimRef.current = animate(blobScale, GROW_TARGET, {
+      duration: 1.5,
+      ease: 'linear',
+      onUpdate: (latest) => {
+        if (latest >= GROW_TARGET && !hasTriggered.current) {
+          hasTriggered.current = true
+          hasLockedRef.current = true
+          growAnimRef.current?.stop()
+          blobScale.set(LOCKED_SCALE)
+          onCurtainDroppingRef.current()
+          // Mount the intro now (underneath the curtain, which sits above
+          // it in z-index — see below) so the curtain drop actually
+          // reveals something instead of being mounted only after the
+          // drop already finished off-screen.
+          onCurtainDoneRef.current()
+          setCurtainPhase('dropping')
+          // Matches the .curtain-drop CSS animation's own duration below
+          // (1.7s) — this is the separate "wall falls away, revealing the
+          // article underneath" beat, distinct from the growth above.
+          setTimeout(() => {
+            setCurtainPhase('done')
+            onSequenceCompleteRef.current?.()
+          }, 1450)
+        }
+      },
+    })
+
+    // A single smooth morph instead of continuously cycling through all 5
+    // shapes on repeat — animating a complex organic border-radius forces
+    // a repaint every frame, and doing that continuously while the element
+    // simultaneously scales up was almost certainly the real source of
+    // choppiness. One morph still reads as an organic blob forming, with
+    // far less repaint churn.
+    radiusAnimRef.current = animate(blobRadius, [
+      '50%',
+      '60% 40% 55% 45% / 50% 45% 55% 50%',
+      '45% 55% 40% 60% / 55% 50% 45% 55%',
+    ], {
+      duration: 1.5,
+      ease: 'easeInOut',
+    })
+
     return () => {
       growAnimRef.current?.stop()
       radiusAnimRef.current?.stop()
     }
-  }, [mobilePressed, isMobile, curtainPhase, onCurtainDone, onCurtainDropping])
+  }, [manualTrigger])
 
-  // desktop: scroll-driven curtain
+  // Scrolling back up near the very top still resets everything, as a
+  // safety net/escape hatch for "take me back to the start" — but nothing
+  // here ever TRIGGERS the growth anymore, only this reset path remains.
+  //
+  // hasProgressedPastResetZone guards against a real bug this surfaced:
+  // since growth is click-triggered now (not scroll-driven), the user's
+  // actual scroll position never moves during the whole intro sequence —
+  // they're still sitting at v≈0 the moment typing finishes and scrolling
+  // unlocks. Without this guard, their very first scroll forward into
+  // Section 01 starts at v≈0, which already satisfies "v < 0.2", firing
+  // this reset immediately and sending them straight back to the landing
+  // page. Only firing once they've actually reached v>=0.2 at least once
+  // since the last trigger — a genuine "scrolled forward, then back up
+  // again" — distinguishes that from "hasn't scrolled forward yet."
+  // (Noted for whenever intro/Section01 get combined into one section —
+  // this whole v<0.2 concept may not even apply to that new structure,
+  // but keeping the fix scoped/minimal for now rather than redesigning
+  // ahead of that.)
+  const hasProgressedPastResetZone = useRef(false)
   useEffect(() => {
     return scrollYProgress.on('change', (v) => {
-      if (isMobile && !mobilePressed) return
-      if (v >= 0.65 && !hasLockedRef.current) {
-        hasLockedRef.current = true
-        onCurtainDropping()
-        hasTriggered.current = true
-        onCurtainDone()
-        setCurtainPhase('dropping')
-        setTimeout(() => setCurtainPhase('done'), 1400)
-      }
-      if (v < 0.2 && hasTriggered.current) {
+      if (v >= 0.2) hasProgressedPastResetZone.current = true
+      if (v < 0.2 && hasTriggered.current && hasProgressedPastResetZone.current) {
         hasTriggered.current = false
         hasLockedRef.current = false
+        hasProgressedPastResetZone.current = false
         growAnimRef.current?.stop()
         radiusAnimRef.current?.stop()
-        mobileBlobScale.set(1)
-        mobileBlobRadius.set('50%')
+        blobScale.set(1)
+        blobRadius.set('50%')
         setCurtainPhase('hidden')
-        onCurtainReset()
+        onCurtainResetRef.current()
       }
     })
-  }, [scrollYProgress, onCurtainDone, onCurtainReset, onCurtainDropping, isMobile, mobilePressed])
+  }, [scrollYProgress])
 
-  // Blobs must stay visible through the whole drop, not just while curtainPhase
-  // is 'hidden'. They're what's providing full-screen color coverage on mobile
-  // (bgOpacity never leaves 0 there since it's driven by scroll, which doesn't
-  // move on mobile). Fading them out the instant the curtain starts dropping
-  // left a ~1.2s gap — after the 0.2s blob fade but before the 1.4s curtain
-  // drop and intro mount finished — where the bare landing page showed through.
-  const blobsVisible = curtainPhase !== 'done'
+  // Only visible during growth ('hidden') — hidden again as soon as the
+  // curtain starts dropping. The reasoning that used to justify keeping
+  // these visible through the WHOLE drop (bgOpacity never reaching 1 on
+  // mobile since it was scroll-driven; the bare landing page showing
+  // through if they faded too early) no longer applies: bgOpacity is
+  // blobScale-driven now on both platforms (reaches 1 reliably before
+  // growth even finishes), and the landing page unmounts the instant
+  // curtainDone flips regardless of these panels' own opacity. Keeping
+  // them at full opacity through the entire drop meant the whole screen
+  // was already fully colored before the curtain even started — since
+  // the curtain uses the same colors, there was no contrast for its own
+  // slide-down motion to read against, making it effectively invisible
+  // even though it was genuinely still playing.
+  const blobsVisible = curtainPhase === 'hidden'
 
   return (
     <>
@@ -238,20 +301,22 @@ export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainR
           to { transform: translateY(110vh); }
         }
         .curtain-drop {
-          animation: curtainDrop 1.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+          animation: curtainDrop 1.45s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
       `}</style>
 
       <motion.div style={{
-        position: 'absolute', top: 0, left: 0, width: '50%', height: '100%',
+        position: 'fixed', top: 0, left: 0, width: '50%', height: isMobile ? '100dvh' : '100vh',
         backgroundColor: color1, zIndex: 19, pointerEvents: 'none',
         opacity: blobsVisible ? bgOpacity : 0,
+        transition: blobsVisible ? undefined : 'opacity 0.2s',
       }} />
 
       <motion.div style={{
-        position: 'absolute', top: 0, right: 0, width: '50%', height: '100%',
+        position: 'fixed', top: 0, right: 0, width: '50%', height: isMobile ? '100dvh' : '100vh',
         backgroundColor: color2, zIndex: 19, pointerEvents: 'none',
         opacity: blobsVisible ? bgOpacity : 0,
+        transition: blobsVisible ? undefined : 'opacity 0.2s',
       }} />
 
       {pinkOrigin && (
@@ -262,13 +327,13 @@ export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainR
         }}>
           <motion.div style={{
             position: 'absolute', top: pinkOrigin.top, left: pinkOrigin.left,
-            width: (isMobile ? MOBILE_BLOB_CSS_BASE : 12) + 'px', height: (isMobile ? MOBILE_BLOB_CSS_BASE : 12) + 'px',
+            width: BLOB_CSS_BASE + 'px', height: BLOB_CSS_BASE + 'px',
             x: '-50%', y: '-50%',
-            borderRadius: isMobile ? mobileBlobRadius : pinkRadius,
+            borderRadius: blobRadius,
             backgroundColor: color1,
-            scale: isMobile ? pinkDisplayScale : blobScalePink,
+            scale: pinkDisplayScale,
             transformOrigin: 'center center',
-            willChange: isMobile ? 'transform' : undefined,
+            willChange: 'transform',
           }} />
         </div>
       )}
@@ -281,13 +346,13 @@ export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainR
         }}>
           <motion.div style={{
             position: 'absolute', top: greenOrigin.top, left: greenOrigin.left,
-            width: (isMobile ? MOBILE_BLOB_CSS_BASE : 12) + 'px', height: (isMobile ? MOBILE_BLOB_CSS_BASE : 12) + 'px',
+            width: BLOB_CSS_BASE + 'px', height: BLOB_CSS_BASE + 'px',
             x: '-50%', y: '-50%',
-            borderRadius: isMobile ? mobileBlobRadius : greenRadius,
+            borderRadius: blobRadius,
             backgroundColor: color2,
-            scale: isMobile ? greenDisplayScale : blobScaleGreen,
+            scale: greenDisplayScale,
             transformOrigin: 'center center',
-            willChange: isMobile ? 'transform' : undefined,
+            willChange: 'transform',
           }} />
         </div>
       )}

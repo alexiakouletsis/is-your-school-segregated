@@ -1,395 +1,66 @@
 import { useIsMobile } from '../hooks/useIsMobile'
-import { motion } from 'framer-motion'
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useScroll } from 'framer-motion'
 import type { Mode } from '../App'
 
-const PARA1_BEFORE = "In some schools, this pattern of clustering students in isolated classes remains up until middle school. In others,\u2003"
-const PARA1_BOLD = "course tracking"
-const PARA1_AFTER = " begins to show around 4th grade."
-const PARA1_FULL = PARA1_BEFORE + PARA1_BOLD + PARA1_AFTER
-
-const SES_PARA2_BEFORE = "Of course, many factors influence how students are placed into classes. Here, one reason our "
-const SES_PARA2_PINK = "pink"
-const SES_PARA2_AFTER1 = " (higher-SES) friend might be placed in advanced math is because they have access to more prep resources. Meanwhile, our "
-const SES_PARA2_GREEN = "green"
-const SES_PARA2_AFTER2 = " friend is placed into \"regular\" math. They still share a home room, but their schedules start to drift apart, and so do they"
-const SES_PARA2_ELLIPSIS = " . . ."
-const SES_PARA2_FULL = SES_PARA2_BEFORE + SES_PARA2_PINK + SES_PARA2_AFTER1 + SES_PARA2_GREEN + SES_PARA2_AFTER2 + SES_PARA2_ELLIPSIS
-
-const RACE_PARA2_BEFORE = "Of course, many factors influence how students are placed into classes. Here, one reason our "
-const RACE_PARA2_ORANGE = "orange"
-const RACE_PARA2_AFTER1 = " friend might be placed in advanced math is because they have access to more prep resources. Meanwhile, our "
-const RACE_PARA2_BLUE = "blue"
-const RACE_PARA2_AFTER2 = " friend is placed into \"regular\" math. They still share a home room, but their schedules start to drift apart, and so do they"
-const RACE_PARA2_ELLIPSIS = " . . ."
-const RACE_PARA2_FULL = RACE_PARA2_BEFORE + RACE_PARA2_ORANGE + RACE_PARA2_AFTER1 + RACE_PARA2_BLUE + RACE_PARA2_AFTER2 + RACE_PARA2_ELLIPSIS
-
+// Recycled from its old typed-paragraph implementation (course-tracking
+// definition popup, SES/race pink-green paragraph, scroll cue) — axed per
+// feedback favoring the site's "no more freeze-frame" static-text
+// direction. Now holds the "Section 01: Elementary School" title +
+// intro body text that used to live inline in ArticleSection.tsx, moved
+// here specifically so that file doesn't have to carry ad-hoc section
+// content directly — this component is the reusable home for it instead.
+//
+// Title formatting matches the original Section01Part1 title exactly;
+// body paragraph formatting matches Part1's own paragraph convention; the
+// face-SVG row keeps this file's own original positioning convention
+// (space-between, max-width 900px, staggered bob animation) — the one
+// piece of the old layout that's still an exact fit for the new content.
 interface Props {
-  onAnimDone: () => void
-  onOverlaySettled: (scrollY: number) => void
-  onAnimReset?: () => void
-  // Bumped by App.tsx's skipAllIntroAnimations right before NavBar jumps
-  // to a section — see that comment. Forces this section's skipAll to
-  // run externally, the same way a click on it already does.
-  skipSignal?: number
   mode: Mode
 }
 
-export default function Section01Part2({ onAnimDone, onOverlaySettled, skipSignal, mode }: Props) {
+export default function Section01Part2({ mode }: Props) {
   const isMobile = useIsMobile()
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [showDefinition, setShowDefinition] = useState(false)
-  const [settled, setSettled] = useState(false)
-  const [para1Text, setPara1Text] = useState('')
-  const [para1Done, setPara1Done] = useState(false)
-  const [para2Text, setPara2Text] = useState('')
-  const [para2Done, setPara2Done] = useState(false)
-  const [showScroll, setShowScroll] = useState(false)
-  const [skipped, setSkipped] = useState(false)
-  const para1Interval = useRef<ReturnType<typeof setInterval> | null>(null)
-  const para2Interval = useRef<ReturnType<typeof setInterval> | null>(null)
-  const hasSettledRef = useRef(false)
-
-  const PARA2_FULL = mode === 'race' ? RACE_PARA2_FULL : SES_PARA2_FULL
-
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start center", "end center"]
-  })
-
-  useEffect(() => {
-    return scrollYProgress.on('change', (v) => {
-      if (v >= (isMobile ? 0.38 : 0.495) && !hasSettledRef.current) {
-        hasSettledRef.current = true
-        setSettled(true)
-        onOverlaySettled(window.scrollY)
-      }
-    })
-  }, [scrollYProgress, onOverlaySettled, isMobile])
-
-  const reset = useCallback(() => {
-    hasSettledRef.current = false
-    setSettled(false)
-    setPara1Text('')
-    setPara2Text('')
-    setPara1Done(false)
-    setPara2Done(false)
-    setShowScroll(false)
-    setSkipped(false)
-    setShowDefinition(false)
-    clearInterval(para1Interval.current!)
-    clearInterval(para2Interval.current!)
-  }, [])
-
-  useEffect(() => {
-    return () => reset()
-  }, [reset])
-
-  // reset on mode change
-  useEffect(() => {
-    reset()
-    if (settled) {
-      setTimeout(() => setSettled(true), 50)
-    }
-  }, [mode])
-
-  useEffect(() => {
-    if (!settled || skipped) return
-    const t = setTimeout(() => {
-      para1Interval.current = setInterval(() => {
-        setPara1Text(prev => {
-          const next = PARA1_FULL.slice(0, prev.length + 1)
-          if (next.length === PARA1_FULL.length) {
-            clearInterval(para1Interval.current!)
-            setPara1Done(true)
-          }
-          return next
-        })
-      }, 22)
-    }, 600)
-    return () => clearTimeout(t)
-  }, [settled, skipped])
-
-  useEffect(() => {
-    if (!para1Done || skipped) return
-    const t = setTimeout(() => {
-      para2Interval.current = setInterval(() => {
-        setPara2Text(prev => {
-          const next = PARA2_FULL.slice(0, prev.length + 1)
-          if (next.length === PARA2_FULL.length) {
-            clearInterval(para2Interval.current!)
-            setPara2Done(true)
-            setShowScroll(true)
-            onAnimDone()
-          }
-          return next
-        })
-      }, 22)
-    }, 600)
-    return () => clearTimeout(t)
-  }, [para1Done, skipped, onAnimDone, PARA2_FULL])
-
-  const skipAll = useCallback(() => {
-    if (skipped || para2Done) return
-    setSkipped(true)
-    clearInterval(para1Interval.current!)
-    clearInterval(para2Interval.current!)
-    setPara1Text(PARA1_FULL)
-    setPara1Done(true)
-    setPara2Text(PARA2_FULL)
-    setPara2Done(true)
-    setShowScroll(true)
-    onAnimDone()
-  }, [skipped, para2Done, onAnimDone, PARA2_FULL])
-
-  // External trigger for the same skip a click already does — see
-  // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
-  // dev-mode double-invoke the same way ArticleSection's forceStart is.
-  const lastSkipSignalRef = useRef(skipSignal)
-  useEffect(() => {
-    if (skipSignal === undefined) return
-    if (skipSignal === lastSkipSignalRef.current) return
-    lastSkipSignalRef.current = skipSignal
-    skipAll()
-  }, [skipSignal, skipAll])
-
-  const renderPara1 = () => {
-    const boldStart = PARA1_BEFORE.length
-    const boldEnd = boldStart + PARA1_BOLD.length
-    const before = para1Text.slice(0, Math.min(para1Text.length, boldStart))
-    const bold = para1Text.slice(boldStart, Math.min(para1Text.length, boldEnd))
-    const after = para1Text.slice(boldEnd)
-    return (
-      <>
-        {before}
-        {bold && (
-          <span
-            onClick={(e) => { e.stopPropagation(); setShowDefinition(prev => !prev) }}
-            style={{
-              fontWeight: 700,
-              fontSize: isMobile ? 'clamp(0.92rem, 4.1vw, 1.15rem)' : 'clamp(1.13rem, 2.1vw, 1.65rem)',
-              textDecoration: showDefinition ? 'underline' : 'none',
-              position: 'relative',
-              display: 'inline-block',
-            }}
-            className="course-tracking-link"
-          >
-            <img src="/assets/sparkle-sketch.svg" style={{
-              position: 'absolute',
-              top: '0.1em',
-              left: '-0.8em',
-              width: '1em',
-              height: 'auto',
-              transform: 'scaleX(-1) rotate(10deg)',
-            }} />
-            {bold}
-          </span>
-        )}
-        {after}
-      </>
-    )
-  }
-
-  const renderPara2 = () => {
-    const segments = mode === 'race' ? [
-      { text: RACE_PARA2_BEFORE, color: null },
-      { text: RACE_PARA2_ORANGE, color: 'var(--color-race-1)' },
-      { text: RACE_PARA2_AFTER1, color: null },
-      { text: RACE_PARA2_BLUE, color: 'var(--color-race-2)' },
-      { text: RACE_PARA2_AFTER2, color: null },
-      { text: RACE_PARA2_ELLIPSIS, color: null, nudge: true },
-    ] : [
-      { text: SES_PARA2_BEFORE, color: null },
-      { text: SES_PARA2_PINK, color: 'var(--color-high-ses)' },
-      { text: SES_PARA2_AFTER1, color: null },
-      { text: SES_PARA2_GREEN, color: 'var(--color-low-ses)' },
-      { text: SES_PARA2_AFTER2, color: null },
-      { text: SES_PARA2_ELLIPSIS, color: null, nudge: true },
-    ]
-    let remaining = para2Text
-    return segments.map((seg, i) => {
-      if (remaining.length === 0) return null
-      const chunk = remaining.slice(0, seg.text.length)
-      remaining = remaining.slice(seg.text.length)
-      if (!chunk) return null
-      // Kiwi Maru's period glyph sits noticeably higher than the baseline
-      // at this line-height — nudging just this trailing ". . ." down a
-      // touch compensates without affecting the rest of the paragraph.
-      if (seg.nudge) {
-        return <span key={i} style={{ position: 'relative', top: '0.12em' }}>{chunk}</span>
-      }
-      return seg.color
-        ? <span key={i} style={{ color: seg.color }}>{chunk}</span>
-        : <span key={i}>{chunk}</span>
-    })
-  }
 
   const dot1Src = mode === 'race' ? '/assets/whiteasian-dot-45.svg' : '/assets/high-SES-dot-45.svg'
   const dot2Src = mode === 'race' ? '/assets/poc-dot-45.svg' : '/assets/low-SES-dot-45.svg'
 
   return (
-    <div
-      ref={containerRef}
-      onClick={settled && !para2Done ? skipAll : undefined}
-      style={{
-        width: '100%',
-        backgroundColor: 'var(--color-bg)',
-        position: 'relative',
-        zIndex: 10,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: isMobile ? '5.5rem 1.5rem 2.5rem 1.5rem' : '6rem 2rem 2.5rem 2rem',
-        gap: isMobile ? '1.3rem' : '2.7rem',
-        cursor: settled && !para2Done ? 'default' : 'auto',
-      }}
-    >
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1.1rem',
-        width: '100%',
-        maxWidth: '990px',
-        alignItems: 'center',
+    <div style={{
+      width: '100%', minHeight: isMobile ? '110vh' : '150vh', backgroundColor: 'var(--color-bg)', position: 'relative', zIndex: 10,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      padding: isMobile ? '3rem 2rem 3rem 2rem' : '4rem 2rem',
+      gap: isMobile ? '1.3rem' : '2.7rem',
+    }}>
+      <h2 style={{
+        fontFamily: "'Gaegu', cursive",
+        fontSize: 'clamp(2rem, 5vw, 4rem)',
+        color: '#111', fontWeight: 400, textAlign: 'center', margin: 0,
       }}>
-        <div style={{ position: 'relative', width: '100%' }}>
-          <p aria-hidden="true" style={{
-            fontFamily: "'Kiwi Maru', serif",
-            fontSize: isMobile ? 'clamp(0.92rem, 3.7vw, 1.1rem)' : 'clamp(1.13rem, 1.95vw, 1.6rem)',
-            lineHeight: 1.7,
-            width: '100%',
-            textAlign: 'center',
-            margin: 0,
-            visibility: 'hidden',
-          }}>
-            {PARA1_BEFORE}
-            <span style={{ fontWeight: 700, fontSize: isMobile ? 'clamp(0.92rem, 4.1vw, 1.15rem)' : 'clamp(1.13rem, 2.1vw, 1.65rem)' }}>
-              {PARA1_BOLD}
-            </span>
-            {PARA1_AFTER}
-          </p>
-          <p style={{
-            fontFamily: "'Kiwi Maru', serif",
-            fontSize: isMobile ? 'clamp(0.92rem, 3.7vw, 1.1rem)' : 'clamp(1.13rem, 1.95vw, 1.6rem)',
-            color: '#111',
-            lineHeight: 1.7,
-            width: '100%',
-            textAlign: 'center',
-            margin: 0,
-            position: 'absolute', top: 0, left: 0, right: 0,
-          }}>
-            {renderPara1()}
-            {para1Text.length > 0 && para1Text.length < PARA1_FULL.length && (
-              <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-            )}
-          </p>
-        </div>
+        Section 01: Elementary School
+      </h2>
 
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: showDefinition ? 'auto' : 0, opacity: showDefinition ? 1 : 0 }}
-          transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-          style={{ overflow: 'hidden', width: '100%', maxWidth: '940px' }}
-        >
-          <div style={{
-            height: 0,
-            backgroundColor: 'var(--color-bg)',
-            width: '100%',
-            flexShrink: 0,
-          }} />
-            <div style={{
-              backgroundColor: '#EADDDD',
-              borderRadius: '16px',
-              padding: '0.8rem 1.4rem',
-              fontFamily: "'Kiwi Maru', serif",
-              fontSize: isMobile ? 'clamp(0.55rem, 2.75vw, 0.75rem)' : 'clamp(0.8rem, 1.3vw, 1rem)',
-              color: '#111',
-              lineHeight: 1.7,
-            }}>
-              <strong style={{ textDecoration: 'underline' }}>Course tracking</strong> refers to the practice of sorting and grouping students into specific learning pathways or class levels based on their perceived academic abilities
-            </div>
-        </motion.div>
-      </div>
-
-      <div style={{ position: 'relative', width: '100%', maxWidth: '940px' }}>
-        <p aria-hidden="true" style={{
-          fontFamily: "'Kiwi Maru', serif",
-          fontSize: isMobile ? 'clamp(0.82rem, 3.2vw, 1rem)' : 'clamp(0.9rem, 1.65vw, 1.2rem)',
-          lineHeight: 1.9,
-          width: '100%',
-          textAlign: 'center',
-          margin: 0,
-          visibility: 'hidden',
-        }}>
-          {mode === 'race' ? RACE_PARA2_FULL : SES_PARA2_FULL}
-        </p>
-        <p style={{
-          fontFamily: "'Kiwi Maru', serif",
-          fontSize: isMobile ? 'clamp(0.82rem, 3.2vw, 1rem)' : 'clamp(0.9rem, 1.65vw, 1.2rem)',
-          color: '#111',
-          lineHeight: 1.9,
-          width: '100%',
-          textAlign: 'center',
-          margin: 0,
-          position: 'absolute', top: 0, left: 0, right: 0,
-        }}>
-          {renderPara2()}
-          {para2Text.length > 0 && para2Text.length < PARA2_FULL.length && (
-            <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-          )}
-        </p>
-      </div>
+      <p style={{
+        fontFamily: "'Kiwi Maru', serif",
+        fontSize: isMobile ? 'clamp(1.1rem, 4.4vw, 1.4rem)' : 'clamp(1.3rem, 2.2vw, 1.7rem)',
+        color: '#111', lineHeight: 1.9,
+        maxWidth: '940px', width: '100%', textAlign: 'center', margin: 0,
+      }}>
+        Keeping in mind how class networks are formed, let's trace these two kindergarten students throughout their time in elementary school. Observe how patterns of classroom sharing change as our students get older.
+      </p>
 
       <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: isMobile ? '0.3rem' : '0.5rem',
-        width: '100%',
-        maxWidth: '900px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        width: '100%', maxWidth: '900px', padding: isMobile ? '0.5rem 0' : '1rem 0',
+        marginTop: isMobile ? '-0.3rem' : '-0.8rem',
       }}>
-        <motion.div
-          onClick={() => showScroll && window.scrollBy({ top: window.innerHeight * 1.35, behavior: 'smooth' })}
-            className="scroll-cue"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: showScroll ? 1 : 0 }}
-          transition={{ duration: 1, delay: 0.5 }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.75rem',
-            fontFamily: "'Gaegu', cursive",
-            fontSize: 'clamp(1.1rem, 2.5vw, 1.6rem)',
-            color: '#111',
-            cursor: showScroll ? 'pointer' : 'default',
-            pointerEvents: showScroll ? 'auto' : 'none',
-          }}
-        >
-          <span className="scroll-cue-text">scroll</span>
-          <img src="/assets/down-scroll-arrow.svg" style={{ width: isMobile ? '1.25rem' : '1.4rem', height: 'auto' }} />
-        </motion.div>
-
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%',
-          padding: isMobile ? '0.5rem 0' : '1rem 0',
-        }}>
-          <img src={dot1Src} style={{
-            width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 15vw, 180px)',
-            height: 'auto',
-            animation: 'bob 2s ease-in-out infinite',
-          }} />
-          <img src={dot2Src} style={{
-            width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 15vw, 180px)',
-            height: 'auto',
-            animation: 'bob 2s ease-in-out infinite',
-            animationDelay: '0.4s',
-          }} />
-        </div>
+        <img src={dot1Src} style={{
+          width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 15vw, 180px)',
+          height: 'auto', animation: 'bob 2s ease-in-out infinite',
+        }} />
+        <img src={dot2Src} style={{
+          width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 15vw, 180px)',
+          height: 'auto', animation: 'bob 2s ease-in-out infinite', animationDelay: '0.4s',
+        }} />
       </div>
     </div>
   )

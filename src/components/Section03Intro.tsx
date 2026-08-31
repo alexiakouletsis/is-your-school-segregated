@@ -39,29 +39,20 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
   }, [])
 
   const [settled, setSettled] = useState(false)
-  const [para1Text, setPara1Text] = useState('')
-  const [para1Done, setPara1Done] = useState(false)
-  const [para2Text, setPara2Text] = useState('')
-  const [para2Done, setPara2Done] = useState(false)
-  const [showScroll, setShowScroll] = useState(false)
-  const [skipped, setSkipped] = useState(false)
   const hasSettledRef = useRef(false)
-  const typingDoneRef = useRef(false)
-  const lockScrollY = useRef<number | null>(null)
-  const para1Interval = useRef<ReturnType<typeof setInterval> | null>(null)
-  const para2Interval = useRef<ReturnType<typeof setInterval> | null>(null)
+  const settledRef = useRef(false)
 
   // Mobile-only: instead of scrolling straight through cover+open like
   // desktop does, mobile holds fully closed once the wall covers the
-  // screen, blocks further scroll, and shows a tap prompt — opening (and
-  // the typing that follows) only plays once the user actually taps.
+  // screen, blocks further scroll, and shows a tap prompt — opening only
+  // plays once the user actually taps.
   const [mobileTapped, setMobileTapped] = useState(false)
   const [mobileOpenProgress, setMobileOpenProgress] = useState(0)
   const [wallClosed, setWallClosed] = useState(false)
   const mobileTappedRef = useRef(false)
   const wallClosedRef = useRef(false)
 
-  useEffect(() => { typingDoneRef.current = para2Done }, [para2Done])
+  useEffect(() => { settledRef.current = settled }, [settled])
 
   // No overlap with GraphSection68 at all — the user just scrolls
   // normally into this section like any other, arriving at a full-screen
@@ -106,7 +97,6 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
         // looking stuck slightly-not-quite-open.
         hasSettledRef.current = true
         setSettled(true)
-        lockScrollY.current = window.scrollY
       }
     }
     window.addEventListener('scroll', handleScroll, { passive: true })
@@ -114,23 +104,23 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
     return () => window.removeEventListener('scroll', handleScroll)
   }, [isMobile])
 
-  // Mobile: block scroll for the entire stretch from "wall closed" through
-  // "typing finished" — covers both the wait-for-tap state and the
-  // opening+typing playback after tapping, in one condition. Checking
-  // refs directly (not state) so there's no race between detecting
-  // closed/tapped/typing-done and actually blocking.
+  // Mobile: block scroll for the stretch from "wall closed" through
+  // "settled" — covers the wait-for-tap state and the opening playback
+  // after tapping, in one condition. Checking refs directly (not state) so
+  // there's no race between detecting closed/tapped/settled and actually
+  // blocking.
   useEffect(() => {
     if (!isMobile) return
     const handleTouchMove = (e: TouchEvent) => {
-      if (wallClosedRef.current && !typingDoneRef.current) e.preventDefault()
+      if (wallClosedRef.current && !settledRef.current) e.preventDefault()
     }
     window.addEventListener('touchmove', handleTouchMove, { passive: false })
     return () => window.removeEventListener('touchmove', handleTouchMove)
   }, [isMobile])
 
-  // Mobile: on tap, animate the open progress over a fixed duration
-  // (not scroll-driven anymore, since scroll is now blocked), then settle
-  // into typing once fully open — mirroring what scroll does on desktop.
+  // Mobile: on tap, animate the open progress over a fixed duration (not
+  // scroll-driven anymore, since scroll is now blocked) — mirroring what
+  // scroll does on desktop.
   const handleMobileTap = () => {
     if (mobileTappedRef.current) return
     mobileTappedRef.current = true
@@ -150,79 +140,11 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
     requestAnimationFrame(tick)
   }
 
-  // Desktop-only scroll lock while typing (mobile scrolls freely the whole
-  // time, typing just plays out in the background) — identical technique
-  // to Section02.tsx.
-  useEffect(() => {
-    if (isMobile) return
-    if (lockScrollY.current === null || para2Done) return
-    const preventScroll = (e: Event) => {
-      if (!typingDoneRef.current) {
-        e.preventDefault()
-        window.scrollTo(0, lockScrollY.current ?? 0)
-      }
-    }
-    window.addEventListener('wheel', preventScroll, { passive: false })
-    window.addEventListener('touchmove', preventScroll, { passive: false })
-    return () => {
-      window.removeEventListener('wheel', preventScroll)
-      window.removeEventListener('touchmove', preventScroll)
-    }
-  }, [lockScrollY.current, para2Done, isMobile])
-
-  useEffect(() => {
-    if (!settled || skipped) return
-    const t = setTimeout(() => {
-      para1Interval.current = setInterval(() => {
-        setPara1Text(prev => {
-          const next = PARA1_FULL.slice(0, prev.length + 1)
-          if (next.length === PARA1_FULL.length) {
-            clearInterval(para1Interval.current!)
-            setPara1Done(true)
-          }
-          return next
-        })
-      }, 22)
-    }, 400)
-    return () => clearTimeout(t)
-  }, [settled, skipped])
-
-  useEffect(() => {
-    if (!para1Done || skipped) return
-    const t = setTimeout(() => {
-      para2Interval.current = setInterval(() => {
-        setPara2Text(prev => {
-          const next = PARA2_FULL.slice(0, prev.length + 1)
-          if (next.length === PARA2_FULL.length) {
-            clearInterval(para2Interval.current!)
-            setPara2Done(true)
-            setShowScroll(true)
-          }
-          return next
-        })
-      }, 22)
-    }, 600)
-    return () => clearTimeout(t)
-  }, [para1Done, skipped])
-
   const skipAll = useCallback(() => {
-    if (skipped || para2Done) return
-    // Normally only reachable once settled is already true (this section
-    // only shows a skip affordance once settled) — set explicitly here too
-    // so this is safe to call externally, before that would have happened
-    // naturally. Without it, para1Text would be set to the full text but
-    // never actually render, since that paragraph reads
-    // `settled ? para1Text : ''`.
+    if (settled) return
+    hasSettledRef.current = true
     setSettled(true)
-    setSkipped(true)
-    clearInterval(para1Interval.current!)
-    clearInterval(para2Interval.current!)
-    setPara1Text(PARA1_FULL)
-    setPara1Done(true)
-    setPara2Text(PARA2_FULL)
-    setPara2Done(true)
-    setShowScroll(true)
-  }, [skipped, para2Done])
+  }, [settled])
 
   // External trigger for the same skip a click already does — see
   // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
@@ -301,7 +223,6 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
     >
       <div
         ref={panelRef}
-        onClick={settled && !para2Done ? skipAll : undefined}
         style={{
           position: 'sticky',
           top: 0,
@@ -319,7 +240,6 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
           // the same time. The horizontal clip now lives on a separate
           // wrapper below, sized so nothing overflows it vertically.
           backgroundColor: 'var(--color-bg)',
-          cursor: settled && !para2Done ? 'default' : 'auto',
         }}
       >
         {/* content */}
@@ -357,10 +277,7 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
             margin: isMobile ? '0 0 0.6rem 0' : '0 0 0.9rem 0',
             minHeight: isMobile ? '8.5em' : '4.5em',
           }}>
-            {settled ? para1Text : ''}
-            {para1Text.length > 0 && para1Text.length < PARA1_FULL.length && (
-              <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-            )}
+            {PARA1_FULL}
           </p>
 
           <p style={{
@@ -374,10 +291,7 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
             margin: isMobile ? '0 0 0.6rem 0' : '0 0 0.9rem 0',
             minHeight: isMobile ? '8.5em' : '4.5em',
           }}>
-            {para2Text}
-            {para2Text.length > 0 && para2Text.length < PARA2_FULL.length && (
-              <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-            )}
+            {PARA2_FULL}
           </p>
 
           <div style={{
@@ -388,12 +302,8 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
             width: '100%',
             maxWidth: '860px',
           }}>
-            <motion.div
-              onClick={() => showScroll && window.scrollBy({ top: window.innerHeight * 1.35, behavior: 'smooth' })}
-            className="scroll-cue"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: showScroll ? 1 : 0 }}
-              transition={{ duration: 1, delay: 0.5 }}
+            <div
+              aria-hidden="true"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -401,14 +311,12 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
                 gap: '0.75rem',
                 fontFamily: "'Gaegu', cursive",
                 fontSize: 'clamp(1.1rem, 2.5vw, 1.6rem)',
-                color: '#111',
-                cursor: showScroll ? 'pointer' : 'default',
-                pointerEvents: showScroll ? 'auto' : 'none',
+                visibility: 'hidden',
               }}
             >
-              <span className="scroll-cue-text">scroll</span>
+              <span>scroll</span>
               <img src="/assets/down-scroll-arrow.svg" style={{ width: isMobile ? '1.25rem' : '1.4rem', height: 'auto' }} />
-            </motion.div>
+            </div>
 
             <div style={{
               display: 'flex',
@@ -441,18 +349,6 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
             </div>
           </div>
         </div>
-
-        {/* Decorative thin white line above the wall */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: isMobile ? '3px' : '7px',
-          backgroundColor: 'white',
-          zIndex: 35,
-          pointerEvents: 'none',
-        }} />
 
         {/* Horizontal-clip wrapper for the wall images — sized to exactly
             match their own height (wallHeight below), so nothing overflows

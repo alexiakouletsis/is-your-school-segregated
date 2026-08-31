@@ -55,11 +55,27 @@ export function useGraphSection({ steps, blockScrollForward, endBufferMs = 500 }
   }, [])
 
   // measure graph panel
+  const lastMeasuredRef = useRef({ width: 0, height: 0 })
   useLayoutEffect(() => {
     const measure = () => {
       if (graphPanelRef.current) {
         const { clientWidth, clientHeight } = graphPanelRef.current
-        if (clientWidth > 0 && clientHeight > 0) setGraphSize({ width: clientWidth, height: clientHeight })
+        if (clientWidth > 0 && clientHeight > 0) {
+          // ResizeObserver fires on essentially any layout recalculation of
+          // the observed element — including plenty of spurious re-fires
+          // that report the exact same effective size (sticky positioning
+          // interacting with scroll is a common trigger). setGraphSize
+          // previously ran unconditionally here, handing out a brand-new
+          // object every time even when nothing actually changed — every
+          // consumer effect keyed on graphSize then had no way to tell a
+          // real resize from a no-op one, since object identity always
+          // "changed" regardless of the numbers inside. Bailing out here
+          // when the numbers match the last real measurement stops those
+          // no-op re-fires from ever reaching consumers.
+          if (lastMeasuredRef.current.width === clientWidth && lastMeasuredRef.current.height === clientHeight) return
+          lastMeasuredRef.current = { width: clientWidth, height: clientHeight }
+          setGraphSize({ width: clientWidth, height: clientHeight })
+        }
       }
     }
     const t = setTimeout(measure, 100)

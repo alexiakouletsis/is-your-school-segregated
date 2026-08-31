@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { Mode } from '../App'
@@ -7,8 +7,17 @@ import {
   type CoursesRaw, type CourseStat,
 } from './courseUtils'
 
-const SES_PARA = "Every course below was taken by at least 50 students across high schools in that district \u2014 ranked from the most heavily higher-SES to the most heavily lower-SES."
-const RACE_PARA = "Every course below was taken by at least 50 students across high schools in that district \u2014 ranked from the most heavily white/asian to the most heavily student-of-color."
+const SES_PARA_BEFORE = "Every course below was taken by at least 50 students across high schools in that district \u2014 ranked from the most heavily "
+const SES_PARA_HIGH = "higher-SES"
+const SES_PARA_MIDDLE = " to the most heavily "
+const SES_PARA_LOW = "lower-SES"
+const SES_PARA_AFTER = "."
+
+const RACE_PARA_BEFORE = "Every course below was taken by at least 50 students across high schools in that district \u2014 ranked from the most heavily "
+const RACE_PARA_HIGH = "white/asian"
+const RACE_PARA_MIDDLE = " to the most heavily "
+const RACE_PARA_LOW = "student-of-color"
+const RACE_PARA_AFTER = "."
 
 interface Props {
   mode: Mode
@@ -23,12 +32,22 @@ export default function CourseClusterSection({ mode }: Props) {
   const [expectedPct, setExpectedPct] = useState<{ ses: number; race: number }>({ ses: 0, race: 0 })
   const [inView, setInView] = useState(false)
 
-  const [paraText, setParaText] = useState('')
-  const [paraDone, setParaDone] = useState(false)
-  const [skipped, setSkipped] = useState(false)
-  const paraInterval = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const PARA_FULL = mode === 'race' ? RACE_PARA : SES_PARA
+  const renderPara = () => {
+    const before = mode === 'race' ? RACE_PARA_BEFORE : SES_PARA_BEFORE
+    const high = mode === 'race' ? RACE_PARA_HIGH : SES_PARA_HIGH
+    const middle = mode === 'race' ? RACE_PARA_MIDDLE : SES_PARA_MIDDLE
+    const low = mode === 'race' ? RACE_PARA_LOW : SES_PARA_LOW
+    const after = mode === 'race' ? RACE_PARA_AFTER : SES_PARA_AFTER
+    return (
+      <>
+        {before}
+        <span style={{ color: highColor }}>{high}</span>
+        {middle}
+        <span style={{ color: lowColor }}>{low}</span>
+        {after}
+      </>
+    )
+  }
 
   useEffect(() => {
     fetch('/data/courses.json')
@@ -69,42 +88,6 @@ export default function CourseClusterSection({ mode }: Props) {
     return () => observer.disconnect()
   }, [])
 
-  useEffect(() => {
-    if (!inView || skipped) return
-    const t = setTimeout(() => {
-      paraInterval.current = setInterval(() => {
-        setParaText(prev => {
-          const next = PARA_FULL.slice(0, prev.length + 1)
-          if (next.length === PARA_FULL.length) {
-            clearInterval(paraInterval.current!)
-            setParaDone(true)
-          }
-          return next
-        })
-      }, 18)
-    }, 400)
-    return () => clearTimeout(t)
-  }, [inView, skipped, PARA_FULL])
-
-  // retype on mode change, same pattern used throughout the rest of the site
-  const isFirstModeRender = useRef(true)
-  useEffect(() => {
-    if (isFirstModeRender.current) { isFirstModeRender.current = false; return }
-    if (!inView) return
-    clearInterval(paraInterval.current!)
-    setSkipped(false)
-    setParaText('')
-    setParaDone(false)
-  }, [mode])
-
-  const skipAll = useCallback(() => {
-    if (skipped || paraDone) return
-    setSkipped(true)
-    clearInterval(paraInterval.current!)
-    setParaText(PARA_FULL)
-    setParaDone(true)
-  }, [skipped, paraDone, PARA_FULL])
-
   const ranked = getRankedCourses(allStats, mode)
   const pctKey: keyof CourseStat = mode === 'race' ? 'whiteAsianPct' : 'higherPct'
   const highColor = mode === 'race' ? 'var(--color-race-1)' : 'var(--color-high-ses)'
@@ -115,7 +98,6 @@ export default function CourseClusterSection({ mode }: Props) {
   return (
     <div
       ref={containerRef}
-      onClick={inView && !paraDone ? skipAll : undefined}
       style={{
         width: '100%',
         backgroundColor: 'var(--color-bg)',
@@ -125,7 +107,6 @@ export default function CourseClusterSection({ mode }: Props) {
         alignItems: 'center',
         padding: isMobile ? '3.5rem 1.3rem 4rem 1.3rem' : '5rem 2rem 6rem 2rem',
         gap: isMobile ? '1.6rem' : '2.5rem',
-        cursor: inView && !paraDone ? 'default' : 'auto',
       }}
     >
       <h3 style={{
@@ -150,16 +131,13 @@ export default function CourseClusterSection({ mode }: Props) {
         margin: 0,
         minHeight: isMobile ? '9em' : '4em',
       }}>
-        {paraText}
-        {paraText.length > 0 && paraText.length < PARA_FULL.length && (
-          <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-        )}
+        {renderPara()}
       </p>
 
       {/* legend */}
       <motion.div
         initial={{ opacity: 0 }}
-        animate={{ opacity: paraDone ? 1 : 0 }}
+        animate={{ opacity: inView ? 1 : 0 }}
         transition={{ duration: 0.6 }}
         style={{
           display: 'flex',
@@ -193,7 +171,7 @@ export default function CourseClusterSection({ mode }: Props) {
             interaction first. */}
         <motion.div
           initial={{ opacity: 0 }}
-          animate={{ opacity: paraDone ? 1 : 0 }}
+          animate={{ opacity: inView ? 1 : 0 }}
           transition={{ duration: 0.6 }}
           style={{
             position: 'absolute',
@@ -215,7 +193,7 @@ export default function CourseClusterSection({ mode }: Props) {
 
         <motion.div
           initial={{ opacity: 0 }}
-          animate={{ opacity: paraDone ? 0.55 : 0 }}
+          animate={{ opacity: inView ? 0.55 : 0 }}
           transition={{ duration: 0.6 }}
           style={{
             position: 'absolute',
@@ -240,7 +218,7 @@ export default function CourseClusterSection({ mode }: Props) {
             <motion.div
               key={course.name}
               initial={{ opacity: 0, x: -8 }}
-              animate={paraDone ? { opacity: 1, x: 0 } : {}}
+              animate={inView ? { opacity: 1, x: 0 } : {}}
               transition={{ duration: 0.35, delay: Math.min(i * 0.03, 0.6) }}
               style={{
                 display: 'flex',
@@ -273,13 +251,13 @@ export default function CourseClusterSection({ mode }: Props) {
               }}>
                 <motion.div
                   initial={{ width: '0%' }}
-                  animate={{ width: paraDone ? `${pct}%` : '0%' }}
+                  animate={{ width: inView ? `${pct}%` : '0%' }}
                   transition={{ duration: 0.7, delay: Math.min(i * 0.03, 0.6) + 0.1, ease: [0.4, 0, 0.2, 1] }}
                   style={{ backgroundColor: highColor, height: '100%' }}
                 />
                 <motion.div
                   initial={{ width: '0%' }}
-                  animate={{ width: paraDone ? `${100 - pct}%` : '0%' }}
+                  animate={{ width: inView ? `${100 - pct}%` : '0%' }}
                   transition={{ duration: 0.7, delay: Math.min(i * 0.03, 0.6) + 0.1, ease: [0.4, 0, 0.2, 1] }}
                   style={{ backgroundColor: lowColor, height: '100%' }}
                 />

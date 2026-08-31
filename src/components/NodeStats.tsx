@@ -11,16 +11,17 @@ interface Props {
   mode: Mode
   visible: boolean
   mobile: boolean
-  // Gate on when the entrance typing sequence is allowed to START (distinct
-  // from `visible`, which only controls opacity). Defaults to true so
-  // callers with nothing to wait on (e.g. GraphSection912, which has no
-  // notice text blocking the stats) behave exactly as before. GraphSection68
-  // passes this tied to its step-1 notice text finishing, so the stats
-  // don't start typing until "This is what a middle school..." is done.
+  // Gate on when the reveal is allowed to start (distinct from `visible`,
+  // which only controls opacity). Defaults to true so callers with
+  // nothing to wait on (e.g. GraphSection912) behave exactly as before.
   startTyping?: boolean
-  // Bump this (any increasing number) to instantly complete the entrance
-  // typing sequence, e.g. on a click-to-skip. No-op once already finished.
+  // Bump this (any increasing number) to instantly complete the reveal,
+  // e.g. on a click-to-skip. No-op once already finished.
   skipSignal?: number
+  // Mobile-only: distance from the bottom edge for both stat boxes.
+  // Defaults to '2rem' (GraphSection912's original value); GraphSection68
+  // passes its own slightly larger value to sit a bit higher.
+  mobileBottomOffset?: string
 }
 
 type Segment = {
@@ -45,6 +46,11 @@ const Cursor = () => <span style={{ borderRight: '2px solid #111', marginLeft: '
 // styling instead of hardcoded bold/color breakpoints. Segments marked
 // `pulse` are remounted (via the pulseKey-derived key) whenever pulseKey
 // changes, replaying the scale keyframe — everything else stays static.
+// Note: typedLen is always either 0 or the full segment length now (see
+// typedLenFor/revealed below), so the `clampedLen > 0 && clampedLen <
+// fullLen` cursor branch below is never actually reached anymore — left in
+// as a harmless no-op rather than restructured, since this function is
+// still doing real work for the pulse-highlight path.
 const renderTypedSegments = (segments: Segment[], typedLen: number, pulseKey: number) => {
   const fullLen = segmentsLength(segments)
   const clampedLen = Math.min(typedLen, fullLen)
@@ -78,7 +84,7 @@ const renderTypedSegments = (segments: Segment[], typedLen: number, pulseKey: nu
   return rendered
 }
 
-export default function NodeStats({ nodes, edges, mode, visible, mobile, startTyping = true, skipSignal }: Props) {
+export default function NodeStats({ nodes, edges, mode, visible, mobile, startTyping = true, skipSignal, mobileBottomOffset = '2rem' }: Props) {
   const filtered = nodes.filter(n => n.ses || n.race_ethnicity)
   const hasData = filtered.length > 0
 
@@ -141,14 +147,16 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
         { text: ' of lower-SES students share zero classes with any higher-SES student.' },
       ]
 
-  // --- Sequential type-out on first appearance ------------------------
-  // Five stages typed one after another (breakdown's own three lines, then
-  // baseline, then isolation) so the whole block doesn't just fade in as
-  // one info-dump. Waits on both `visible` and `startTyping` — the latter
-  // lets a caller (GraphSection68) hold off until its own notice text has
-  // finished typing first. Once the sequence finishes once, it never
-  // replays — later value changes render instantly and use the per-percent
-  // pulse above to draw the eye instead.
+  // --- Reveal on first appearance ---------------------------------------
+  // No more sequential stage-by-stage reveal or character typing — per
+  // feedback, everything just shows up together the first time this
+  // becomes visible, relying on the fade transition below (on the
+  // breakdown/baselineStat/isolationStat wrappers) for the "all at once"
+  // entrance. Waits on both `visible` and `startTyping` — the latter lets
+  // a caller (GraphSection68) hold off until its own notice text has
+  // finished typing first. Once revealed, it stays revealed — later value
+  // changes render instantly and use the per-percent pulse below to draw
+  // the eye instead.
   const labelText = 'Of this given network:'
   const stageSegments: Segment[][] = [
     [{ text: labelText }],
@@ -159,66 +167,29 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
   ]
   const stageFullLens = stageSegments.map(segmentsLength)
 
-  const [activeStage, setActiveStage] = useState(-1)
-  const [typedLen, setTypedLen] = useState(0)
+  const [revealed, setRevealed] = useState(false)
   const hasStartedRef = useRef(false)
   const hasFinishedFirstPassRef = useRef(false)
 
   useEffect(() => {
     if (!visible || !startTyping || !hasData || hasStartedRef.current) return
     hasStartedRef.current = true
-    setActiveStage(0)
-    setTypedLen(0)
+    hasFinishedFirstPassRef.current = true
+    setRevealed(true)
   }, [visible, startTyping, hasData])
 
-  useEffect(() => {
-    if (activeStage < 0 || activeStage >= stageFullLens.length) return
-    const fullLen = stageFullLens[activeStage]
-
-    const advance = () => {
-      if (activeStage + 1 < stageFullLens.length) {
-        setActiveStage(activeStage + 1)
-        setTypedLen(0)
-      } else {
-        hasFinishedFirstPassRef.current = true
-        setActiveStage(stageFullLens.length)
-      }
-    }
-
-    if (fullLen === 0) {
-      const t = setTimeout(advance, 0)
-      return () => clearTimeout(t)
-    }
-
-    const iv = setInterval(() => {
-      setTypedLen(l => {
-        const next = l + 1
-        if (next >= fullLen) {
-          clearInterval(iv)
-          setTimeout(advance, 250)
-        }
-        return next
-      })
-    }, 20)
-    return () => clearInterval(iv)
-  }, [activeStage])
-
-  // Click-to-skip: jump straight to the fully-typed end state. Effect (not
-  // a plain function call) so it also fires if skipSignal arrives before
-  // hasStartedRef.current is even true yet (e.g. a very fast click).
+  // Click-to-skip: still meaningful even without a sequence to skip
+  // through, since a caller might fire this before `startTyping` has
+  // flipped true yet (e.g. a very fast click) — jumps straight to shown.
   useEffect(() => {
     if (!skipSignal || hasFinishedFirstPassRef.current) return
     hasStartedRef.current = true
     hasFinishedFirstPassRef.current = true
-    setActiveStage(stageFullLens.length)
-    setTypedLen(0)
+    setRevealed(true)
   }, [skipSignal])
 
-  const typedLenFor = (stage: number, fullLen: number) => {
-    if (hasFinishedFirstPassRef.current) return fullLen
-    if (activeStage > stage) return fullLen
-    if (activeStage === stage) return typedLen
-    return 0
+  const typedLenFor = (_stage: number, fullLen: number) => {
+    return revealed ? fullLen : 0
   }
 
   // --- Attention pulse on value change ---------------------------------
@@ -322,7 +293,7 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
       <>
         <div style={{
           position: 'absolute',
-          bottom: '2rem',
+          bottom: mobileBottomOffset,
           left: '1.5rem',
           zIndex: 4,
           textAlign: 'left',
@@ -333,10 +304,10 @@ export default function NodeStats({ nodes, edges, mode, visible, mobile, startTy
         }}>
           {breakdown}
         </div>
-        {(baselineStat || isolationStat) && (
+        {(baselineSegments.length > 0 || isolationSegments.length > 0) && (
           <div style={{
             position: 'absolute',
-            bottom: '2rem',
+            bottom: mobileBottomOffset,
             right: '1.5rem',
             zIndex: 4,
             textAlign: 'left',
