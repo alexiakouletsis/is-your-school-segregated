@@ -839,7 +839,15 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               return
             }
             if (!isMobile) return
-            if (currentStep === 0) return
+            // By this point dialogueDone is guaranteed true (the check
+            // above already returned for the not-done case) — this used
+            // to just `return` unconditionally, which on mobile was a
+            // dead end: the wheel/touch-swipe handlers that would
+            // normally advance currentStep are skipped entirely on
+            // mobile (see useGraphSection.ts), so tap is the ONLY
+            // mechanism mobile has to move forward at all, and this line
+            // blocked the very first tap needed to leave the dialogue.
+            if (currentStep === 0) { setCurrentStep(1); return }
             if (!isTextStep) {
               const target = e.target as Element
               if (target.tagName === 'circle' || target.tagName === 'image') {
@@ -862,10 +870,18 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
                 }
                 return
               }
+              // Was `return`ing here — inconsistent with the identical
+              // branch in GraphSection68/GraphSection912, which both fall
+              // through instead. With the return, ANY tap after a node
+              // had been tapped once (setting hoveredNode) only ever
+              // closed the tooltip and consumed the tap — never reaching
+              // the advance-step logic below — so on a graph dense enough
+              // that an "advance" tap easily lands on/near a node instead
+              // of empty space, forward navigation could get stuck
+              // needing repeated taps just to clear hoveredNode each time.
               if (hoveredNode !== null) {
                 setHoveredNode(null)
                 tooltipRef.current?.style('opacity', 0)
-                return
               }
             }
             const rect = graphPanelRef.current?.getBoundingClientRect()

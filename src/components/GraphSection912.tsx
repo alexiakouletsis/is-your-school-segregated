@@ -147,10 +147,10 @@ const getEdgeColor912 = (d: Edge, mode: Mode): string => {
 // simply be the pipeline itself occasionally running long on a loaded or
 // lower-power desktop machine.
 const DESKTOP_NODE_SAMPLE_CAP: Record<number, number> = {
-  1: 280,
-  2: 300,
-  3: 300,
-  4: 260,
+  1: 310,
+  2: 325,
+  3: 350,
+  4: 284,
 }
 
 // Mobile CPUs are meaningfully weaker than desktop, and the full pipeline
@@ -169,10 +169,10 @@ const DESKTOP_NODE_SAMPLE_CAP: Record<number, number> = {
 // at any of these sizes — this only changes how many dots are on screen,
 // not the story the clusters tell.
 const MOBILE_NODE_SAMPLE_CAP: Record<number, number> = {
-  1: 175,
-  2: 185,
-  3: 185,
-  4: 155,
+  1: 225,
+  2: 235,
+  3: 250,
+  4: 240,
 }
 const getNodeSampleCap = (step: number, isMobile: boolean) =>
   (isMobile ? MOBILE_NODE_SAMPLE_CAP : DESKTOP_NODE_SAMPLE_CAP)[step] ?? (isMobile ? 175 : 280)
@@ -405,6 +405,15 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
   // always reports real percentages regardless of how many nodes actually
   // got rendered/simulated.
   const fullPopulationRef = useRef<Node[]>([])
+  // The full population's own real edges (weight-filtered, but never
+  // restricted by sampling) — separate from activeEdgesRef, which only
+  // ever reflects whichever subset actually got sampled/rendered. Passed
+  // to NodeStats alongside fullPopulationRef below so its % stats are
+  // computed from real, matching node/edge data regardless of how many
+  // nodes actually made it onto screen — see that prop's own comment for
+  // why pairing the full population with only the sampled subset's edges
+  // was producing wildly inflated isolation percentages.
+  const fullEdgesRef = useRef<Edge[]>([])
 
   // Holds grade 9's ENTIRE finished node/edge set (post sample, prune,
   // largest-component, rescue — with converged x/y baked in) once the
@@ -905,6 +914,13 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
       // than a real course-pathway relationship.
       .filter(n => n.courses.split(',').map(c => c.trim()).filter(Boolean).length > 1)
     fullPopulationRef.current = filteredFullNodes.map(n => ({ ...n }))
+    {
+      const fullIds = new Set(filteredFullNodes.map(n => n.id))
+      const minWeightForStats = MIN_EDGE_WEIGHT[currentStep] ?? 2
+      fullEdgesRef.current = data.edges.filter(e =>
+        e.weight >= minWeightForStats && fullIds.has(e.source as number) && fullIds.has(e.target as number)
+      )
+    }
 
     // Grade 9's genuine first-ever visit (no existing converged positions
     // to carry over at all) reuses the background pre-warm's ENTIRE
@@ -1379,7 +1395,7 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
               </div>
               <div style={{ flex: 1 }} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2.25rem' }}>
-                <NodeStats nodes={fullPopulationRef.current} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={false} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} />
+                <NodeStats nodes={fullPopulationRef.current} edges={fullEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={false} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} />
               </div>
             </div>
           )}
@@ -1414,12 +1430,23 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
             // Skip whichever notice/stats typing is currently running —
             // also works on desktop, where clicks otherwise fall through
             // to nothing until the isMobile check below.
-            const target0 = getNoticeTarget(currentStep)
-            const isNoticeTyping = target0 !== '' && noticeText.length < target0.length
-            if (isNoticeTyping) {
-              skipTyping()
-              return
-            }
+            // Finish whatever notice typing is running, WITHOUT blocking
+            // the rest of this tap — was `if (isNoticeTyping) { skipTyping(); return }`,
+            // which meant any tap landing while noticeText hadn't exactly
+            // caught up to its target (a timing race, not something the
+            // user did) got swallowed entirely, never reaching the
+            // advance-step logic below. That gate used to only matter on
+            // grades 9/11 (the only steps with their own STEP_NOTICES
+            // entry — every other step's target was '', so isNoticeTyping
+            // was always false there). Since getNoticeTarget started
+            // walking backward to always resolve non-empty for any step
+            // >= 1 (fixing notice text disappearing on grades 10/12),
+            // EVERY grade step's tap now runs through this check — and
+            // any tap that raced ahead of typing on ANY of them silently
+            // ate the whole gesture instead of just finishing the text.
+            // skipTyping() is already safe to call unconditionally (same
+            // as setSkipTypingSignal right below), so just do that.
+            skipTyping()
             // Notice text (if any) is already done, but NodeStats' own
             // entrance sequence might still be typing — bump its skip
             // signal too (a harmless no-op if it's already finished)
@@ -1427,7 +1454,15 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
             // still runs in the same gesture.
             setSkipTypingSignal(s => s + 1)
             if (!isMobile) return
-            if (currentStep === 0) return
+            // By this point dialogueDone is guaranteed true (the check
+            // above already returned for the not-done case) — this used
+            // to just `return` unconditionally, which on mobile was a
+            // dead end: the wheel/touch-swipe handlers that would
+            // normally advance currentStep are skipped entirely on
+            // mobile (see useGraphSection.ts), so tap is the ONLY
+            // mechanism mobile has to move forward at all, and this line
+            // blocked the very first tap needed to leave the dialogue.
+            if (currentStep === 0) { setCurrentStep(1); return }
             const target = e.target as Element
             if (target.tagName === 'circle' || target.tagName === 'image') {
               const datum = d3.select(target as SVGCircleElement | SVGImageElement).datum() as Node | undefined
@@ -1451,7 +1486,6 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
             if (hoveredNode !== null) {
               setHoveredNode(null)
               tooltipRef.current?.style('opacity', 0)
-              return
             }
             const rect = graphPanelRef.current?.getBoundingClientRect()
             if (!rect) return
@@ -1564,7 +1598,7 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
                 </div>
               )}
               {currentStep >= 1 && (
-                <NodeStats nodes={fullPopulationRef.current} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={true} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} mobileBottomOffset="2.1rem" />
+                <NodeStats nodes={fullPopulationRef.current} edges={fullEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={true} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} mobileBottomOffset="2.1rem" />
               )}
               <div style={{ position: 'absolute', bottom: '2.6rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.4rem' }}>
                 {STEPS.map((_, i) => (

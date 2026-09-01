@@ -520,7 +520,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
           // one part of the paragraph that's meant to visibly reanimate on
           // a mode switch. Everything else (before/after text, the rest of
           // the sequence) is untouched since it's not wrapped this way.
-          <span key={mode} className="accent-reanimate" style={{ display: 'inline-block', backgroundColor: 'rgba(253, 244, 203, 0.5)', borderRadius: '3px', padding: '0 0.15em' }}>
+          <span key={mode} className="accent-reanimate" style={{ display: 'inline-block', backgroundColor: 'rgba(253, 244, 203, 0.62)', borderRadius: '3px', padding: '0 0.15em', fontWeight: 700 }}>
             {renderAlternating(accentTyped, highColor, lowColor)}
           </span>
         )}

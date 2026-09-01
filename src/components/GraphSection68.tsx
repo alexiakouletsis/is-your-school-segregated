@@ -170,6 +170,14 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
   const hasPlayedDialogue = useRef(false)
 
   const altFullPopulationRef = useRef<Node[]>([])
+  // The alt-school full population's own real edges (weight-filtered, but
+  // never restricted by sampling) — separate from activeEdgesRef, which
+  // only ever reflects whichever subset actually got sampled/rendered.
+  // Fixes the same isolation-percentage inflation bug GraphSection912 had:
+  // pairing the full population with only the sampled subset's edges made
+  // any full-population node not included in the sample read as having
+  // zero connections, even when it has real ones in the actual data.
+  const altFullEdgesRef = useRef<Edge[]>([])
 
   // Bumped on click to skip whatever typing animation is currently running
   // — the step-1/alt notice text (handled directly in the click handler
@@ -505,7 +513,13 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
       // two protagonists sliding from their real on-screen spot rather
       // than snapping to a raw baked coordinate that was never actually
       // rendered at that scale).
-      if (isAltStep) altFullPopulationRef.current = filteredFullNodes.map(n => ({ ...n }))
+      if (isAltStep) {
+        altFullPopulationRef.current = filteredFullNodes.map(n => ({ ...n }))
+        const fullIds = new Set(filteredFullNodes.map(n => n.id))
+        altFullEdgesRef.current = data.edges.filter(e =>
+          e.weight >= 3 && fullIds.has(e.source as number) && fullIds.has(e.target as number)
+        )
+      }
 
       newNodes = nodesToUse.map(n => {
         const existing = existingById.get(n.id)
@@ -801,6 +815,12 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
   const statsNodes = currentStep >= 2
     ? (altFullPopulationRef.current.length > 0 ? altFullPopulationRef.current : activeNodesRef.current)
     : activeNodesRef.current
+  // Mirrors statsNodes' own fallback exactly, so nodes and edges always
+  // come from the same (full or sampled) set rather than pairing a full
+  // population with only the sampled subset's edges.
+  const statsEdges = currentStep >= 2
+    ? (altFullPopulationRef.current.length > 0 ? altFullEdgesRef.current : activeEdgesRef.current)
+    : activeEdgesRef.current
 
   const bubbleStyle = (isRight: boolean, color: string) => ({
     backgroundColor: 'white',
@@ -908,7 +928,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
               </div>
               <div style={{ flex: 1 }} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2.25rem' }}>
-                <NodeStats nodes={statsNodes} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={false} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} />
+                <NodeStats nodes={statsNodes} edges={statsEdges} mode={mode} visible={currentStep >= 1} mobile={false} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} />
               </div>
             </div>
           )}
@@ -943,12 +963,17 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
             // Skip whichever notice/stats typing is currently running —
             // also works on desktop, where clicks otherwise fall through
             // to nothing until the isMobile check below.
-            const isNoticeTyping = currentStep === 1 && noticeText.length < TRACKING_LOW_TEXT.length
-            const isAltTyping = currentStep >= 2 && !altTypingDone
-            if (isNoticeTyping || isAltTyping) {
-              skipTyping()
-              return
-            }
+            // Finish whatever typing is running (the tracking notice on
+            // step 1, or the alt-school comparison text on steps >= 2),
+            // WITHOUT blocking the rest of this tap — was
+            // `if (isNoticeTyping || isAltTyping) { skipTyping(); return }`,
+            // which meant any tap landing before that typing had finished
+            // was swallowed entirely rather than just finishing the text,
+            // never reaching the advance-step logic below. That's the
+            // same underlying bug fixed in GraphSection912's identical
+            // pattern — skipTyping() is already safe to call
+            // unconditionally (see setSkipTypingSignal just below it).
+            skipTyping()
             // Notice/alt text (if any) is already done, but NodeStats'
             // own entrance sequence might still be typing — bump its skip
             // signal too (a harmless no-op if it's already finished)
@@ -956,7 +981,15 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
             // still runs in the same gesture.
             if (currentStep >= 1) setSkipTypingSignal(s => s + 1)
             if (!isMobile) return
-            if (currentStep === 0) return
+            // By this point dialogueDone is guaranteed true (the check
+            // above already returned for the not-done case) — this used
+            // to just `return` unconditionally, which on mobile was a
+            // dead end: the wheel/touch-swipe handlers that would
+            // normally advance currentStep are skipped entirely on
+            // mobile (see useGraphSection.ts), so tap is the ONLY
+            // mechanism mobile has to move forward at all, and this line
+            // blocked the very first tap needed to leave the dialogue.
+            if (currentStep === 0) { setCurrentStep(1); return }
             const target = e.target as Element
             if (target.tagName === 'circle' || target.tagName === 'image') {
               // Tapped an actual node — show/toggle its tooltip instead of
@@ -984,7 +1017,6 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
             if (hoveredNode !== null) {
               setHoveredNode(null)
               tooltipRef.current?.style('opacity', 0)
-              return
             }
             const rect = graphPanelRef.current?.getBoundingClientRect()
             if (!rect) return
@@ -1083,7 +1115,7 @@ export default function GraphSection68({ mode, resetSignal }: { mode: Mode; rese
                 </div>
               )}
               {currentStep >= 1 && (
-                <NodeStats nodes={statsNodes} edges={activeEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={true} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} mobileBottomOffset="2.1rem" />
+                <NodeStats nodes={statsNodes} edges={statsEdges} mode={mode} visible={currentStep >= 1} mobile={true} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} mobileBottomOffset="2.1rem" />
               )}
               <div style={{ position: 'absolute', bottom: '2.6rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.4rem' }}>
                 {STEPS.map((_, i) => (
