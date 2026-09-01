@@ -1,6 +1,6 @@
 # Is Your School Segregated?
 
-A Pudding-style scrollytelling data journalism piece examining course-sharing networks across grade levels at public school districts, illustrating patterns of educational tracking and segregation.
+A scrollytelling data journalism piece examining course-sharing networks across grade levels at public school districts, illustrating patterns of educational tracking and segregation.
 
 **Live site:** [isyourschoolsegregated.com](https://isyourschoolsegregated.com)
 
