@@ -233,10 +233,9 @@ export function useGraphSection({ steps, blockScrollForward, endBufferMs = 500 }
         .on('mousemove', event => { tooltipRef.current?.style('left', (event.clientX + 12) + 'px').style('top', (event.clientY - 28) + 'px') })
         .on('mouseleave', () => { setHoveredNode(null); tooltipRef.current?.style('opacity', 0) })
         .call(imageDrag)
-    } else {
-      nodeG.selectAll<SVGCircleElement, Node>('circle').call(drag)
-      nodeG.selectAll<SVGImageElement, Node>('image').call(imageDrag)
     }
+    // Mobile: no drag at all — see the comment above drag's own
+    // declaration for why this was removed rather than just left as-is.
   }
 
   const autoZoom = (
