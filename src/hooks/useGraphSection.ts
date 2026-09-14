@@ -15,9 +15,16 @@ interface UseGraphSectionOptions {
   // GraphSection45 specifically, where the exit into Section02 was too easy
   // to blow past accidentally with a normal scroll flick.
   endBufferMs?: number
+  // Opt-in, defaults to false — every existing caller is unaffected. When
+  // true, skips attaching the wheel and touch-swipe listeners entirely, so
+  // normal scrolling just scrolls through this section's tall container
+  // like any other content instead of being captured and converted into
+  // discrete steps. For GraphSectionElementary specifically, which moved
+  // step navigation to explicit forward/back buttons on desktop instead.
+  disableScrollNav?: boolean
 }
 
-export function useGraphSection({ steps, blockScrollForward, endBufferMs = 500 }: UseGraphSectionOptions) {
+export function useGraphSection({ steps, blockScrollForward, endBufferMs = 500, disableScrollNav = false }: UseGraphSectionOptions) {
   const [currentStep, setCurrentStep] = useState(0)
   const [hoveredNode, setHoveredNode] = useState<number | null>(null)
   const [graphSize, setGraphSize] = useState({ width: 0, height: 0 })
@@ -122,7 +129,7 @@ export function useGraphSection({ steps, blockScrollForward, endBufferMs = 500 }
   // wheel-like events on some devices, triggering blockScrollForward's
   // preventDefault and producing a stuck, need-to-keep-scrolling feeling)
   useEffect(() => {
-    if (isMobile) return
+    if (isMobile || disableScrollNav) return
     const handleWheel = (e: WheelEvent) => {
       if (!sectionRef.current || e.ctrlKey) return
       const rect = sectionRef.current.getBoundingClientRect()
@@ -159,14 +166,14 @@ export function useGraphSection({ steps, blockScrollForward, endBufferMs = 500 }
     }
     window.addEventListener('wheel', handleWheel, { passive: false, capture: true })
     return () => window.removeEventListener('wheel', handleWheel, { capture: true })
-  }, [steps.length, blockScrollForward, isMobile, endBufferMs])
+  }, [steps.length, blockScrollForward, isMobile, endBufferMs, disableScrollNav])
 
   // touch scroll (desktop/tablet touchscreens only — mobile uses explicit
   // tap zones instead, since trying to distinguish "swipe to change step"
   // from "swipe to scroll the page" with heuristics was unreliable and
   // fighting with normal page scroll)
   useEffect(() => {
-    if (isMobile) return
+    if (isMobile || disableScrollNav) return
     let touchStartY = 0, touchStartX = 0
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) { touchStartY = e.touches[0].clientY; touchStartX = e.touches[0].clientX }
@@ -195,7 +202,7 @@ export function useGraphSection({ steps, blockScrollForward, endBufferMs = 500 }
       window.removeEventListener('touchstart', handleTouchStart)
       window.removeEventListener('touchend', handleTouchEnd)
     }
-  }, [steps.length, blockScrollForward, isMobile])
+  }, [steps.length, blockScrollForward, isMobile, disableScrollNav])
 
   const setupNodeInteractions = (
     nodeG: d3.Selection<SVGGElement, unknown, null, undefined>,

@@ -1,8 +1,12 @@
-import { motion } from 'framer-motion'
 import { useIsMobile } from '../hooks/useIsMobile'
 import GraphSectionElementary from './GraphSectionElementary'
+import GraphExplainerIntro from './GraphExplainerIntro'
 import GraphSectionRepelAttract from './GraphSectionRepelAttract'
-import Section01Part2 from './Section01Part2'
+// Section01Part2 is still out of the flow per feedback — its "Section 01:
+// Elementary School" title block comes back later. Commented out (not
+// deleted) so it's a one-line restore, and so the noUnusedLocals build
+// check doesn't fail on the import below in the meantime.
+// import Section01Part2 from './Section01Part2'
 import type { Mode } from '../App'
 import Section02 from './Section02'
 import GraphSection68 from './GraphSection68'
@@ -18,9 +22,11 @@ import Conclusion from './Conclusion'
 // rather than in a separate component/section, specifically so there's no
 // seam (no gap, no divider, no transition animation) between it and the
 // section's own content. Static, small, left-aligned — not typed/animated.
-const CITATION_BEFORE = "The "
-const CITATION_LINK = "Plural Connections Group"
-const CITATION_AFTER = " has partnered with a public school district in the Southeastern United States to collect data on 75 schools (varying from grades k-12) about classes that students share with one another. Classes can not only affect a student's academic breadth, but also the extent of their friendship networks. Let's take a look at this data in the context of "
+// Unused for now — the citation paragraph that read these is temporarily
+// cut from render below. Kept here (not deleted) for the one-line restore.
+// const CITATION_BEFORE = "The "
+// const CITATION_LINK = "Plural Connections Group"
+// const CITATION_AFTER = " has partnered with a public school district in the Southeastern United States to collect data on 75 schools (varying from grades k-12) about classes that students share with one another. Classes can not only affect a student's academic breadth, but also the extent of their friendship networks. Let's take a look at this data in the context of "
 
 interface Props {
   onAnimDone?: () => void
@@ -35,6 +41,13 @@ interface Props {
   // full reasoning. Forwarded straight through to it; drives NavBar's
   // one-time auto-reveal in App.tsx.
   onRevealed?: () => void
+  // Fires once GraphSectionElementary has been fully scrolled past (see
+  // its own onExited prop). Drives App.tsx's persistent toggle reveal —
+  // per feedback, the toggle should stay hidden through the intro and
+  // elementary section, and probably a bit further (exact point still
+  // TBD), so this wiring is a placeholder trigger point that's easy to
+  // move to a later section once that's decided.
+  onElementaryExited?: () => void
   graphResetSignal?: number
   // Each bumped independently by App.tsx's skipAnimationsUpTo, only for
   // sections before whichever nav destination was actually clicked — see
@@ -49,9 +62,16 @@ interface Props {
   forceStart?: number
 }
 
+// Single adjustable knob for the intro block's mobile vertical centering —
+// padding-based tweaks kept overshooting in both directions without being
+// able to see the actual render live. Negative = nudge up, positive = nudge
+// down. Adjust this one value directly if it's still off.
+const MOBILE_VERTICAL_NUDGE = '-10vh'
+
 export default function ArticleSection({
   onToggleModeAndScrollTop = () => {},
   onRevealed = () => {},
+  onElementaryExited = () => {},
   graphResetSignal = 0,
   skipSection02Signal,
   skipSection03IntroSignal,
@@ -65,126 +85,31 @@ export default function ArticleSection({
 
   return (
     <div data-section="01" style={{ position: 'relative' }}>
-      {/* Part of the page's own content, NOT the toggle widget itself
-          (App.tsx) — this scrolls away with the rest of Section 01 like
-          any other element here, unlike the toggle, which stays fixed.
-          Positioned to sit visually to the left of the toggle only on
-          initial view, before any scrolling happens. */}
-      <img src="/assets/spark.svg" className="subtle-stop-motion" style={{
-        position: 'absolute',
-        top: isMobile ? '1rem' : '1.5rem',
-        right: isMobile ? '12.5rem' : '18.25rem',
-        width: isMobile ? 'clamp(1.2rem, 4.5vw, 1.6rem)' : 'clamp(1.6rem, 2.2vw, 2.1rem)',
-        height: 'auto',
-        zIndex: 1,
-      }} />
+      {/* spark.svg removed — it was positioned next to the toggle, which
+          isn't shown yet at this point in the article. Bring it back
+          alongside the toggle's own reintroduction later. */}
 
       {/* Text content — normal flow, scrolls away like anything else on
-          the page. The node "settle into place" transition used to live
-          in a separate sticky element here, handing off to
-          GraphSectionRepelAttract's own sticky panel below — but two
-          separate sticky elements handing off to each other is inherently
-          seam-prone (there's always a boundary where one releases and the
-          other engages), which is what was reading as two distinct sets
-          of faces rather than one continuous pair. That whole transition
-          now lives entirely inside GraphSectionRepelAttract instead, as
-          the leading portion of its own single continuous scroll range —
-          see the comment there. */}
+          the page. No transition tying it to the graph section below;
+          the two protagonist dots (rendered further down, still inside
+          this same box) are just static. */}
       <div style={{
         display: 'flex',
         flexDirection: 'column',
+        justifyContent: isMobile ? 'center' : 'flex-start',
         gap: isMobile ? '0.75rem' : '3rem',
-        paddingTop: isMobile ? '5.3rem' : '0.75in',
-        paddingBottom: isMobile ? '1rem' : '1.5rem',
+        minHeight: '100vh',
+        paddingTop: isMobile ? 0 : '16vh',
+        paddingBottom: isMobile ? 0 : '1.5rem',
         position: 'relative',
       }}>
-        {/* Row 1: citation paragraph + toggle-instruction line. Side by
-            side on desktop, stacked on mobile — order swapped on mobile
-            only (toggle-instruction first, citation second) via CSS
-            `order`, so the underlying DOM/JSX order doesn't need to
-            differ between platforms. */}
-        <div style={{
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          alignItems: 'center',
-          gap: isMobile ? '1.5rem' : '3.6rem',
-          padding: isMobile ? '0 1.5rem' : '0 2rem 0 0.5in',
-        }}>
-          <div style={{
-            order: isMobile ? 2 : 0,
-            width: isMobile ? '100%' : '50%',
-            marginLeft: isMobile ? 0 : '2.5rem',
-            marginTop: isMobile ? '-0.3rem' : 0,
-            textAlign: 'left',
-            fontFamily: "'Kiwi Maru', serif",
-            color: '#111',
-            lineHeight: isMobile ? 1.7 : 1.85,
-            flexShrink: 0,
-          }}>
-            <p style={{
-              fontSize: isMobile ? 'clamp(0.75rem, 3.2vw, 0.92rem)' : 'clamp(0.95rem, 1.45vw, 1.2rem)',
-              margin: 0,
-            }}>
-              {CITATION_BEFORE}
-              <a href="https://www.pluralconnections.org/" target="_blank" rel="noopener noreferrer"
-                className="pcg-link" style={{ color: '#9E2591', textDecoration: 'none' }}>
-                {CITATION_LINK}
-              </a>
-              {CITATION_AFTER}
-              {mode === 'ses' ? (
-                <motion.span key="ses" initial={{ scale: 1 }} animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 0.6, ease: 'easeInOut' }}
-                  style={{ display: 'inline-block', backgroundColor: '#FDF4CB', borderRadius: '3px', padding: '0 0.15em' }}>
-                  <strong style={{ color: 'var(--color-high-ses)' }}>Socio-Economic </strong>
-                  <strong style={{ color: 'var(--color-low-ses)' }}>Status</strong>
-                </motion.span>
-              ) : (
-                // Bug fix: this branch previously rendered plain, uncolored
-                // "race." — split to match the SES branch's two-color
-                // treatment instead of being the one case with no color at
-                // all.
-                <motion.span key="race" initial={{ scale: 1 }} animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 0.6, ease: 'easeInOut' }}
-                  style={{ display: 'inline-block', backgroundColor: '#FDF4CB', borderRadius: '3px', padding: '0 0.15em' }}>
-                  <strong style={{ color: 'var(--color-race-1)' }}>ra</strong>
-                  <strong style={{ color: 'var(--color-race-2)' }}>ce</strong>
-                </motion.span>
-              )}.
-            </p>
-          </div>
-
-          {/* Toggle-instruction line + arrow — to the right of the citation
-              on desktop, above it on mobile (order-swapped, see above).
-              rightuparrow.svg points toward wherever the actual SES/Race
-              toggle lives (top-right corner). */}
-          <div style={{
-            order: isMobile ? 1 : 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: isMobile ? 'flex-start' : 'center',
-            gap: isMobile ? '0.05rem' : '1.8rem',
-            width: isMobile ? '100%' : 'auto',
-            marginTop: isMobile ? '-0.6rem' : '0.3rem',
-            marginLeft: isMobile ? 0 : '1.5rem',
-          }}>
-            <span style={{
-              fontFamily: "'Gaegu', cursive",
-              fontSize: isMobile ? 'clamp(1.1rem, 4.2vw, 1.5rem)' : 'clamp(1.15rem, 1.75vw, 1.55rem)',
-              color: '#111',
-              lineHeight: 1.3,
-              maxWidth: isMobile ? '280px' : '360px',
-              marginTop: isMobile ? 0 : '2.7rem',
-            }}>
-              Click this toggle throughout your experience to view this data in a different context.
-            </span>
-            <div className="subtle-stop-motion" style={{ flexShrink: 0, display: 'inline-block' }}>
-              <img src="/assets/rightuparrow.svg" style={{
-                width: isMobile ? 'clamp(2.6rem, 9vw, 3.6rem)' : 'clamp(3.6rem, 5.5vw, 5.2rem)',
-                height: 'auto', flexShrink: 0,
-                transform: isMobile ? 'translateX(-0.8rem)' : 'none',
-                position: 'relative', top: isMobile ? '-0.2rem' : '-0.5rem',
-              }} />
-            </div>
-          </div>
-        </div>
+        {/* Citation paragraph + toggle-instruction row removed for now per
+            feedback — the intro should lead with "Take these two..."
+            first. Both the Plural Connections Group citation and the
+            toggle-instruction line come back later, once the toggle
+            itself is reintroduced (see App.tsx's toggleRevealed). Not
+            deleted, just cut from render — CITATION_BEFORE/LINK/AFTER
+            constants above are temporarily unused as a result. */}
 
         {/* Static SES/race intro line — same wording/coloring convention as
             the rest of the site (higher-SES/lower-SES, white/asian/student
@@ -194,6 +119,13 @@ export default function ArticleSection({
             SES mode there) so switching modes doesn't change this block's
             own height, which otherwise shifted GraphSectionRepelAttract's
             overlap position below it, and with it the node SVGs. */}
+        {/* Paragraph + dots grouped together so mobile vertical centering
+            can be nudged with one transform instead of fighting over
+            padding (padding-based tweaks kept overshooting in both
+            directions without being able to see the actual render).
+            MOBILE_VERTICAL_NUDGE below is the one knob to adjust —
+            negative moves the group up, positive moves it down. */}
+        <div style={{ transform: isMobile ? `translateY(${MOBILE_VERTICAL_NUDGE})` : undefined }}>
         <div style={{
           padding: '0 1.5rem',
           maxWidth: isMobile ? '100%' : '940px',
@@ -201,49 +133,69 @@ export default function ArticleSection({
           textAlign: 'center',
           minHeight: isMobile ? '9.5em' : undefined,
         }}>
+          {/* Title — same styling convention as Section01Part2's own
+              title (before that file was taken out of the flow), just
+              living here now instead. */}
+          <h2 style={{
+            fontFamily: "'Gaegu', cursive",
+            fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.8rem)' : 'clamp(2rem, 5vw, 4rem)',
+            color: '#111', fontWeight: 400, textAlign: 'center', margin: '0 0 1rem 0',
+          }}>
+            Section 01: Elementary School
+          </h2>
           <p style={{
             fontFamily: "'Kiwi Maru', serif",
-            fontSize: isMobile ? 'clamp(1.02rem, 4vw, 1.3rem)' : 'clamp(1.42rem, 2.4vw, 1.8rem)',
+            fontSize: isMobile ? 'clamp(0.98rem, 3.8vw, 1.22rem)' : 'clamp(1.28rem, 2.1vw, 1.65rem)',
             color: '#111', lineHeight: 1.9, margin: 0,
           }}>
             {mode === 'ses' ? (
               <>
                 Take these two students entering kindergarten. One of them comes from a{' '}
-                <span style={{ color: 'var(--color-high-ses)' }}>higher-SES</span> family (pink/left), and the other from a{' '}
-                <span style={{ color: 'var(--color-low-ses)' }}>lower-SES</span> family (green/right).
+                <span style={{ color: 'var(--color-high-ses)' }}>higher-SES</span> family, and the other from a{' '}
+                <span style={{ color: 'var(--color-low-ses)' }}>lower-SES</span> family. Let's trace who they share classes with throughout elementary school.
               </>
             ) : (
               <>
                 Take these two students entering kindergarten. One of them is a{' '}
-                <span style={{ color: 'var(--color-race-1)' }}>white/asian student</span> (orange/left), and the other is a{' '}
-                <span style={{ color: 'var(--color-race-2)' }}>student of color</span> (blue/right).
+                <span style={{ color: 'var(--color-race-1)' }}>white/asian student</span>, and the other is a{' '}
+                <span style={{ color: 'var(--color-race-2)' }}>student of color</span>. Let's trace who they share classes with throughout elementary school.
               </>
             )}
           </p>
         </div>
 
-        {/* Desktop-only decoration — points from this text down toward
-            the node SVGs in GraphSectionRepelAttract below. Positioned
-            relative to this specific block (not the outer, very tall
-            section) so it stays anchored to the intro area regardless of
-            how much content follows. */}
-        {!isMobile && (
-          <img src="/assets/bigarrow.svg" className="subtle-stop-motion" style={{
-            position: 'absolute',
-            bottom: '-34%',
-            left: '10%',
-            width: 'clamp(15.5rem, 26vw, 26rem)',
-            height: 'auto',
-            pointerEvents: 'none',
+        {/* The two protagonist face SVGs, static below the paragraph —
+            same K3-size assets used by GraphSectionElementary's own
+            single-kindergarten-class step, just a plain bobbing pair
+            here, centered across the full width. */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: isMobile ? '3rem' : '6rem',
+          width: '100%', maxWidth: '600px', margin: isMobile ? '3rem auto 0 auto' : '5.5rem auto 0 auto',
+        }}>
+          <img src={mode === 'race' ? '/assets/whiteasian-dot-K3.svg' : '/assets/high-SES-dot-K3.svg'} style={{
+            width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 12vw, 160px)',
+            height: 'auto', animation: 'bob 2s ease-in-out infinite',
           }} />
-        )}
+          <img src={mode === 'race' ? '/assets/poc-dot-K3.svg' : '/assets/low-SES-dot-K3.svg'} style={{
+            width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 12vw, 160px)',
+            height: 'auto', animation: 'bob 2s ease-in-out infinite', animationDelay: '0.4s',
+          }} />
+        </div>
+        </div>
+
+        {/* bigarrow removed per feedback — not needed here. */}
       </div>
 
+      {/* Section01Part2 removed for now — its "Section 01: Elementary
+          School" title/intro text block comes back later. */}
+      {/* <Section01Part2 mode={mode} /> */}
+
+      <GraphSectionElementary mode={mode} resetSignal={graphResetSignal} onExited={onElementaryExited} />
+
+      {/* Simple title-only breather, then back into GraphSectionRepelAttract. */}
+      <GraphExplainerIntro />
       <GraphSectionRepelAttract mode={mode} />
-
-      <Section01Part2 mode={mode} />
-
-      <GraphSectionElementary mode={mode} resetSignal={graphResetSignal} />
 
       <Section02 mode={mode} skipSignal={skipSection02Signal} />
       <GraphSection68 mode={mode} resetSignal={graphResetSignal} />

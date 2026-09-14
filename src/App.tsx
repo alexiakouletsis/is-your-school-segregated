@@ -119,6 +119,15 @@ function App() {
   // very start of the article, so the trigger moved to "reached the
   // conclusion" instead of "clicked its toggle."
   const [reachedConclusion, setReachedConclusion] = useState(false)
+  // Persistent toggle stays hidden through the intro and the elementary
+  // section per feedback — it'll be explicitly introduced later, further
+  // into the article. Currently wired to GraphSectionElementary's own
+  // onExited (via ArticleSection's onElementaryExited) as a placeholder
+  // trigger point; the exact reveal point is still TBD (feedback mentions
+  // "probably a bit more of the article" beyond elementary), so this is
+  // the one line to move once that's decided — swap which callback below
+  // calls setToggleRevealed(true).
+  const [toggleRevealed, setToggleRevealed] = useState(false)
   // Reported by NavBar itself (desktop only — see its own comment) so the
   // persistent toggle can be bumped down while the bar is showing, rather
   // than the two overlapping.
@@ -328,16 +337,17 @@ function App() {
   // Conclusion's own bottom-of-page restart button.
   const toggleMode = () => setMode(prev => prev === 'ses' ? 'race' : 'ses')
 
-  // R key toggles mode
+  // R key toggles mode — gated on toggleRevealed so this isn't a secret
+  // way to flip modes before the toggle has actually been introduced.
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'r' || e.key === 'R') {
+      if ((e.key === 'r' || e.key === 'R') && toggleRevealed) {
         toggleMode()
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [])
+  }, [toggleRevealed])
 
   // Conclusion's visible toggle switch: same mode flip as the 'R' key, plus
   // a jump back to the top of the page so "the whole thing starts over" —
@@ -605,6 +615,7 @@ function App() {
         }}
         onToggleModeAndScrollTop={handleToggleModeAndScrollTop}
         onRevealed={() => setReachedConclusion(true)}
+        onElementaryExited={() => setToggleRevealed(true)}
         graphResetSignal={graphResetSignal}
         skipSection01Signal={skipSection01Signal}
         skipSection02Signal={skipSection02Signal}
@@ -642,7 +653,7 @@ function App() {
           its usual spot once NavBar hides. Mobile never sets
           navBarVisible true (NavBar's hamburger sits in its own fixed
           spot below this instead), so this has no effect there. */}
-      {curtainDone && (
+      {curtainDone && toggleRevealed && (
         <div
           onMouseEnter={() => !isMobile && setTooltipVisible(true)}
           onMouseLeave={() => setTooltipVisible(false)}

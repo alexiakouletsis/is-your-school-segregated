@@ -412,7 +412,7 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
       style={{
         height: isMobile ? '190vh' : `${TOTAL_VH}vh`,
         position: 'relative',
-        marginTop: isMobile ? '-20vh' : '-55vh',
+        marginTop: isMobile ? '-65vh' : '-85vh',
       }}
     >
       <div style={{

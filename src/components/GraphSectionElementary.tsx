@@ -86,9 +86,7 @@ const DIALOGUE = [
   { node: 'high', text: "Yes!", delay: 2300 },
 ]
 
-const PARA1_BEFORE = "In some schools, this pattern of grouping remains up until middle school. In others, "
-const PARA1_BOLD = "course tracking"
-const PARA1_AFTER = " begins to show around 4th grade."
+const PARA1 = "In some schools around the 4th grade, students transition from being in one fixed room to sharing multiple classes with peers. This causes networks to go from looking like pods to integrated webs."
 
 // A handful of nodes across grades K-5 have "Speech" as their ONLY listed
 // class — outliers that aren't representative of a real shared-class
@@ -103,22 +101,22 @@ const isSpeechOnly = (n: Node): boolean => {
 // can be colored, matching the site's established convention for these
 // words elsewhere.
 const SES_PARA2_SEGMENTS: { text: string, color: string | null }[] = [
-  { text: "Of course, many confounding factors go into placing students in classes. But for this story, let's say that because our ", color: null },
+  { text: "Now that students are manually placed into shared classes rather than being randomly grouped, affluency gaps begin to take form. For this story, let's say that because our ", color: null },
   { text: "pink", color: 'var(--color-high-ses)' },
   { text: " friend has access to more resources, ", color: null },
   { text: "pink", color: 'var(--color-high-ses)' },
   { text: " was filtered into an advanced math class, while our ", color: null },
   { text: "green", color: 'var(--color-low-ses)' },
-  { text: " friend stayed in a \"regular\" one. They still share a home room, but varying affluency gaps take form.", color: null },
+  { text: " friend stayed in a \"regular\" one. They still share a home room, but systems begin to pull them apart.", color: null },
 ]
 const RACE_PARA2_SEGMENTS: { text: string, color: string | null }[] = [
-  { text: "Of course, many confounding factors go into placing students in classes. But for this story, let's say that because our ", color: null },
+  { text: "Now that students are manually placed into shared classes rather than being randomly grouped, gaps begin to take form. For this story, let's say that because our ", color: null },
   { text: "orange", color: 'var(--color-race-1)' },
   { text: " friend has access to more resources, ", color: null },
   { text: "orange", color: 'var(--color-race-1)' },
   { text: " was filtered into an advanced math class, while our ", color: null },
   { text: "blue", color: 'var(--color-race-2)' },
-  { text: " friend stayed in a \"regular\" one. They still share a home room, but varying gaps take form.", color: null },
+  { text: " friend stayed in a \"regular\" one. They still share a home room, but systems begin to pull them apart.", color: null },
 ]
 
 type StepType = 'graph' | 'text'
@@ -135,10 +133,16 @@ const STEPS: { label: string, type: StepType }[] = [
 const K3_LAST_STEP = 4
 const GRADE45_START = 6
 
-export default function GraphSectionElementary({ mode, onGrade3Complete, resetSignal }: {
+export default function GraphSectionElementary({ mode, onGrade3Complete, resetSignal, onExited }: {
   mode: Mode
   onGrade3Complete?: (nodes: Node[]) => void
   resetSignal?: number
+  // Fires once when this section has been fully scrolled past (exitProgress
+  // reaching 1) — forwarded up through ArticleSection to App.tsx to drive
+  // the persistent toggle's reveal timing. See App.tsx's toggleRevealed
+  // comment: the exact point the toggle should appear is still TBD, so this
+  // is a placeholder trigger, easy to move to a later section once decided.
+  onExited?: () => void
 }) {
   const [k3GraphData, setK3GraphData] = useState<(GraphData | null)[]>([null, null, null, null])
   const [grade45Data, setGrade45Data] = useState<(GraphData | null)[]>([null, null])
@@ -160,6 +164,11 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     // Carried over from GraphSection45 — the exit from grade 5 into
     // Section02 was too easy to blow past with a normal scroll flick.
     endBufferMs: 1400,
+    // Desktop step navigation moved to explicit forward/back buttons (see
+    // their render further down) instead of scroll — mobile is unaffected
+    // either way, since it already only navigates via tap. Only this
+    // section for now; GraphSection68/912 keep scroll-driven stepping.
+    disableScrollNav: true,
   })
 
   // Mobile-only: the main graph effect below waits for this to catch up
@@ -228,14 +237,19 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     })
   }, [entryProgress])
 
+  const hasFiredOnExitedRef = useRef(false)
   useEffect(() => {
     return exitProgress.on('change', (v) => {
       if (v <= 0) return // not yet in the exit zone — don't interfere with entry-fade logic above
       const fadeOutAmount = Math.min(1, v / 0.5)
       bgOpacity.set(1 - fadeOutAmount)
       setIsVisuallyActive(fadeOutAmount < 0.3)
+      if (v >= 1 && !hasFiredOnExitedRef.current) {
+        hasFiredOnExitedRef.current = true
+        onExited?.()
+      }
     })
-  }, [exitProgress])
+  }, [exitProgress, onExited])
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('graphSectionActive', { detail: { id: 'elementary', active: isVisuallyActive } }))
@@ -498,7 +512,8 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
         // other during settling, which is what "sometimes" the wrong side
         // was. Pinning fx (not releasing it) removes that possibility
         // entirely; y stays free so they still settle naturally with the
-        // group vertically.
+        // group vertically. No entrance animation — nodes are simply at
+        // their resting position from frame one.
         if (n.id === PROTAGONIST_HIGH) {
           return { ...(existing ?? n), x: cx - 25, y: existing?.y ?? cy, fx: cx - 25, fy: null }
         }
@@ -606,15 +621,31 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
 
     simulationRef.current = simulation
 
-    // Plain default delay for all steps here now — no per-step special
-    // case needed. The wrong-size-on-first-load bug wasn't really about
-    // timing (see the cold-start comment above): a fixed-length wait just
-    // delays the same wrong-bbox snapshot rather than fixing it, since
-    // this range's charge (-2) is too weak to meaningfully expand a
-    // cold-started clump within any delay worth sitting through. Starting
-    // already spread across the panel (above) means the bbox is roughly
-    // right the moment this fires, whatever the delay is.
-    const padding = isGrade45 ? (isMobile ? 30 : 80) : (isSmall ? (isMobile ? 60 : 150) : (currentStep === 0 ? (isMobile ? 15 : 40) : (isMobile ? 30 : 80)))
+    // padding bumped up a bit for step 0 specifically (from 40/15 to
+    // 55/20) — the zoom fit below now happens almost immediately, based
+    // on the neighbors' INITIAL scattered positions rather than waiting
+    // for physics to settle first, so there needs to be enough slack for
+    // them to still visibly move into their final spots without drifting
+    // outside the already-fixed frame.
+    const padding = isGrade45 ? (isMobile ? 30 : 80) : (isSmall ? (isMobile ? 60 : 150) : (currentStep === 0 ? (isMobile ? 20 : 55) : (isMobile ? 30 : 80)))
+    // Reordered per feedback: this used to wait 1400ms, measuring the
+    // bounding box AFTER physics had already settled the neighbors into
+    // place — meaning nodes visibly moved first (at whatever default,
+    // unfit zoom), then the view snapped/zoomed to catch up once they'd
+    // already stopped. Now the fit is computed almost immediately (0ms —
+    // still deferred one tick so the enter-selection's initial attrs
+    // exist first), using the neighbors' INITIAL scattered position
+    // instead of their settled one.
+    //
+    // The zoom itself is also no longer animated (no .transition()) —
+    // applying it instantly, rather than over 400ms, means there's no
+    // window where the zoom is still moving AND the neighbor nodes are
+    // also moving at the same time. That overlap was especially visible
+    // revisiting step 0 after being on a later step (zooming from that
+    // step's wider fit back down to this one while nodes were also
+    // repositioning read as chaotic). Now it's two clean, sequential
+    // phases: the frame snaps to the correct fit first, then whatever
+    // physics-driven settling happens is the only motion on screen.
     const zoomTimer = currentStep === 0
       ? setTimeout(() => {
           if (!svgRef.current || !zoomRef.current) return
@@ -627,10 +658,9 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
             const scale = Math.min((fitWidth - padding * 2) / bounds.width, (fitHeight - padding * 2) / bounds.height)
             const tx = fitWidth / 2 - cx * scale
             const ty = fitHeight / 2 - cy * scale
-            d3.select(svgRef.current).transition().duration(600)
-              .call(zoomRef.current.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
+            d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
           } catch (_) {}
-        }, 1400)
+        }, 0)
       : autoZoom(g, width, height, padding, 800)
 
     simulation.on('tick', () => {
@@ -660,7 +690,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
       .attr('class', 'regular-node')
       .attr('cx', d => d.x ?? cx).attr('cy', d => d.y ?? cy)
       .attr('r', currentStep === 0 ? 10 : 6).attr('fill', d => getNodeColor(d, mode))
-      .attr('stroke', 'white').attr('stroke-width', 0.8).attr('cursor', 'pointer').attr('opacity', 0)
+      .attr('stroke', 'white').attr('stroke-width', 0.8).attr('cursor', currentStep === 0 ? 'default' : 'pointer').attr('opacity', 0)
       .transition().duration(500).attr('opacity', 1)
     circles.transition().duration(300).attr('r', currentStep === 0 ? 10 : 6).attr('fill', d => getNodeColor(d, mode))
 
@@ -686,7 +716,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     faceImages.enter().append('image')
       .attr('href', d => getFaceSrc(d, mode, isGrade45 ? '45' : 'K3')).attr('width', faceSize).attr('height', faceSize)
       .attr('x', d => (d.x ?? cx) - faceSize / 2).attr('y', d => (d.y ?? cy) - faceSize / 2)
-      .attr('cursor', 'pointer').attr('opacity', 0).transition().duration(500).attr('opacity', 1)
+      .attr('cursor', currentStep === 0 ? 'default' : 'pointer').attr('opacity', 0).transition().duration(500).attr('opacity', 1)
 
     // Hover/tap highlighting and drag are unnecessary during the dialogue
     // step — its two nodes are placeholder dummies, not real data, so
@@ -704,22 +734,27 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     }
   }, [currentStep, deferredStep, k3GraphData, grade45Data, graphSize.width, graphSize.height, mode, isMobile])
 
-  const hintBar = (mobile: boolean) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#EADDDD', borderRadius: '999px', padding: mobile ? '0.4rem 0.8rem' : '0.5rem 1rem', opacity: 0.85 }}>
-      <img src="/assets/i-icon.svg" style={{ width: mobile ? '14px' : '16px', height: mobile ? '14px' : '16px', flexShrink: 0 }} />
-      <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: mobile ? 'clamp(0.55rem, 2.5vw, 0.7rem)' : 'clamp(0.55rem, 0.9vw, 0.75rem)', color: '#111', margin: 0, lineHeight: 1.4 }}>
-        {isMobile ? 'Tap and drag on nodes to explore connections!' : 'Hover over and drag on nodes to explore connections!'}
-      </p>
-    </div>
-  )
-
   const isTextStep = STEPS[currentStep].type === 'text'
-  const isK3Step = currentStep <= K3_LAST_STEP
   const para2Segments = mode === 'race' ? RACE_PARA2_SEGMENTS : SES_PARA2_SEGMENTS
 
   return (
     <div ref={outerRef} id="graph-elementary" style={{ height: isMobile ? '100vh' : `${STEPS.length * 45}vh`, position: 'relative' }}>
-      <div ref={sectionRef} style={{ position: isMobile ? 'relative' : 'sticky', top: 0, width: '100%', height: '100vh', backgroundColor: 'var(--color-bg)', overflow: 'hidden', willChange: isMobile ? undefined : 'transform' }}>
+      <div ref={sectionRef} style={{ position: isMobile ? 'relative' : 'sticky', top: 0, width: '100%', height: '100vh', overflow: 'hidden', willChange: isMobile ? undefined : 'transform' }}>
+
+        {/* Solid backdrop — was a hardcoded opaque backgroundColor directly
+            on sectionRef above, which (now that this section overlaps the
+            intro text via marginTop) painted over that text immediately on
+            load instead of fading in with everything else. Pulled out into
+            its own motion layer sharing bgOpacity with the wallpaper right
+            below, so the intro text stays visible through the hold phase
+            and both fade in together exactly on the same schedule they did
+            before this section overlapped anything. */}
+        <motion.div style={{
+          position: 'absolute', inset: 0, zIndex: 0,
+          backgroundColor: 'var(--color-bg)',
+          opacity: bgOpacity,
+          pointerEvents: 'none',
+        }} />
 
         {/* Graph-paper background — fades in smoothly as the user
             approaches (see entryProgress above), always on afterward
@@ -765,11 +800,6 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
             </p>
           )}
           <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: isMobile ? 'center' : 'flex-start', width: '100%' }}>
-            {!isMobile && isK3Step && (
-              <div style={{ position: 'absolute', bottom: 'calc(100% + 1rem)', left: 0 }}>
-                {hintBar(false)}
-              </div>
-            )}
             <div style={{
               // Mobile wraps just the title text in a translucent pill
               // background, matching RepelAttract's own mobile title
@@ -794,7 +824,6 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
                 </motion.p>
               </AnimatePresence>
             </div>
-            {isMobile && isK3Step && hintBar(true)}
             {!isMobile && (
               <div style={{ display: 'flex', gap: '0.4rem' }}>
                 {STEPS.map((_, i) => (
@@ -895,6 +924,59 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
           }}
           style={{ flex: 1, minHeight: 0, height: isMobile ? undefined : '100%', position: 'relative', zIndex: 1, cursor: isMobile ? 'pointer' : 'default' }}
         >
+          {/* Desktop-only "Click to go back" — genuinely positioned to the
+              right of the left panel (i.e. inside the graph panel itself,
+              at its top-left corner), not floating within the left panel
+              — per feedback, it needs to sit past that boundary, not just
+              near it. Hidden entirely on step 0, since there's nowhere to
+              go back to. No cursor override — the site has its own custom
+              cursor SVG that the browser's default pointer/hand icon
+              would otherwise cover up on hover. */}
+          {!isMobile && currentStep > 0 && (
+            <motion.div
+              onClick={(e) => {
+                e.stopPropagation()
+                setCurrentStep(prev => Math.max(0, prev - 1))
+              }}
+              whileHover={{ scale: 1.05 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'absolute', top: '1.5rem', left: '1rem', zIndex: 5,
+                fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              }}
+            >
+              ← Click to go back
+            </motion.div>
+          )}
+          {/* Desktop-only "Click to go forward" — see the matching "Click
+              to go back" comment just above. Mirrors the same dialogue-
+              skip-then-advance behavior mobile's own tap-to-advance
+              already has on step 0. Hidden entirely on the last step, full
+              stop — no longer conditioned on dialogueDone too, since that
+              left a loophole where it could still show up if that flag
+              wasn't true yet for some reason. No cursor override, same
+              reasoning as the back button. */}
+          {!isMobile && currentStep !== STEPS.length - 1 && (
+            <motion.div
+              onClick={(e) => {
+                e.stopPropagation()
+                if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
+                setCurrentStep(prev => Math.min(STEPS.length - 1, prev + 1))
+              }}
+              whileHover={{ scale: 1.05 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'absolute', top: '1.5rem', right: '1rem', zIndex: 5,
+                fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              }}
+            >
+              Click to go forward →
+            </motion.div>
+          )}
           {isMobile && !isTextStep && noticeText && (
             <div style={{ position: 'absolute', top: '2.2rem', left: '16%', right: '16%', zIndex: 5, padding: '0.6rem 1rem', backgroundColor: 'rgba(250,249,246,0.92)', borderRadius: '8px' }}>
               <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.6rem, 2.5vw, 0.75rem)', color: '#111', lineHeight: 1.5, margin: 0, textAlign: 'center' }}>
@@ -988,7 +1070,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
                 fontSize: isMobile ? 'clamp(0.85rem, 3.5vw, 1.05rem)' : 'clamp(1rem, 1.7vw, 1.35rem)',
                 color: '#111', lineHeight: 1.8, textAlign: 'center', margin: 0, maxWidth: '760px',
               }}>
-                {PARA1_BEFORE}<strong>{PARA1_BOLD}</strong>{PARA1_AFTER}
+                {PARA1}
               </p>
               <p style={{
                 position: 'relative', zIndex: 1,
