@@ -80,6 +80,59 @@ const PARA_ACCENT = "Genuine connection"
 const PARA_AFTER = " starts by sharing a space."
 const PARA_FULL = PARA_BEFORE + PARA_ACCENT + PARA_AFTER
 
+// Reunion dialogue between the two original protagonists, 20 years on —
+// the "payoff" from the original feedback notes ("go back to two nodes,
+// explain what happens to those two"). Segmented per line (not flat
+// strings) so each speaker's name-callout can be colored in the OTHER
+// person's color, matching the site's established convention. "high"
+// speaks left (pink/orange), "low" speaks right (green/blue) — same
+// high/low convention as every graph section's own protagonist coloring.
+type DialogueSegment = { text: string, color: 'high' | 'low' | null }
+type DialogueLine = { speaker: 'high' | 'low', segments: DialogueSegment[], delay: number }
+
+const DIALOGUE_LINES: DialogueLine[] = [
+  {
+    speaker: 'high',
+    segments: [
+      { text: '', color: 'low' }, // filled in per-mode below — the other person's name
+      { text: "!? Is that you? It's been ages!", color: null },
+    ],
+    delay: 0,
+  },
+  {
+    speaker: 'low',
+    segments: [
+      { text: 'No way, ', color: null },
+      { text: '', color: 'high' },
+      { text: "!? I haven't seen you since freshman year of high school!", color: null },
+    ],
+    delay: 1400,
+  },
+  {
+    speaker: 'high',
+    segments: [
+      { text: "Yeah, I guess we just... grew apart. Can we get coffee and catch up?", color: null },
+    ],
+    delay: 2900,
+  },
+  {
+    speaker: 'low',
+    segments: [
+      { text: "Absolutely!", color: null },
+    ],
+    delay: 4200,
+  },
+]
+
+// The colored "name" each speaker calls the other by — SES mode uses the
+// dot colors' own names (Pink/Green); race mode uses "Blue!?"/"Orange!?"
+// instead, per feedback, rather than reusing "Pink"/"Green" in a context
+// where the actual dots on screen are orange/blue.
+const getDialogueName = (mode: Mode, who: 'high' | 'low') => {
+  if (mode === 'race') return who === 'high' ? 'Orange' : 'Blue'
+  return who === 'high' ? 'Pink' : 'Green'
+}
+
 const INFO_BEFORE = "For more information similar subjects, click "
 const INFO_HERE = "here"
 const INFO_MIDDLE = " to see "
@@ -151,6 +204,14 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
   const [skipped, setSkipped] = useState(false)
   const [sigHovered, setSigHovered] = useState(false)
   const contentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // --- reunion dialogue (the two original protagonists, 20 years on) ---
+  // Slots in between contentVisible (title appears) and the rest of the
+  // body (paragraph/signature/phases) — that rest now waits on
+  // dialogueDone instead of appearing immediately alongside the title.
+  const [dialogueVisible, setDialogueVisible] = useState<boolean[]>(DIALOGUE_LINES.map(() => false))
+  const [dialogueDone, setDialogueDone] = useState(false)
+  const dialogueTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const hasPlayedDialogueRef = useRef(false)
   // Guards onRevealed so it only ever fires once per session, regardless
   // of which path (the normal scroll-triggered reveal, or a skip/nav-jump)
   // triggers contentVisible, and regardless of the user later scrolling
@@ -161,6 +222,31 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
     hasFiredRevealedRef.current = true
     onRevealed?.()
   }, [onRevealed])
+  // NavBar's auto-reveal (driven by onRevealed/fireRevealed) used to fire
+  // the instant contentVisible flipped true — i.e. right as the title and
+  // adult figures/dialogue first appeared. Per feedback, it should wait
+  // until the user has actually scrolled down PAST that, to the body
+  // paragraph below. IntersectionObserver rather than a scroll-position
+  // threshold since this content area is a nested scroll container on
+  // desktop (overflowY:auto below) but not on mobile (overflowY:visible,
+  // relying on the outer page scroll instead) — watching the body
+  // wrapper's own intersection works identically either way, without
+  // needing to know which scroll mechanism is actually in play.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!contentVisible || !bodyRef.current) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          fireRevealed()
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    observer.observe(bodyRef.current)
+    return () => observer.disconnect()
+  }, [contentVisible, fireRevealed])
   // Local scroll lock (same technique Section02 already uses for its own
   // self-contained typed sequence) — NOT App.tsx's wheel-lock system. This
   // keeps the whole transition + content sequence as one self-contained
@@ -218,6 +304,11 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
     setSkipped(false)
     setSigHovered(false)
     setSequenceStarted(false)
+    setDialogueVisible(DIALOGUE_LINES.map(() => false))
+    setDialogueDone(false)
+    hasPlayedDialogueRef.current = false
+    dialogueTimersRef.current.forEach(t => clearTimeout(t))
+    dialogueTimersRef.current = []
     lockScrollYRef.current = null
     if (contentTimeoutRef.current) clearTimeout(contentTimeoutRef.current)
   }, [])
@@ -257,11 +348,29 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
     return 1
   }
 
-  // No more staggered typing/fade sequence — everything shows in full as
-  // soon as the content block itself fades in. infoDone still exists
-  // since the desktop scroll-lock effect below reads it as "the reveal is
-  // done, safe to unlock" — it just no longer waits on typing to get
-  // there.
+  // Plays the reunion dialogue once the title has appeared (contentVisible)
+  // — same staggered setTimeout-per-line approach GraphSectionElementary's
+  // own dialogue uses, just without that file's separate scroll-triggered
+  // lazy-start (contentVisible here already IS "the user has scrolled to
+  // this point"), so it's simpler: just delays from the moment
+  // contentVisible flips true.
+  useEffect(() => {
+    if (!contentVisible || skipped) return
+    if (hasPlayedDialogueRef.current) return
+    hasPlayedDialogueRef.current = true
+    DIALOGUE_LINES.forEach((_, i) => {
+      const t = setTimeout(() => {
+        setDialogueVisible(prev => { const next = [...prev]; next[i] = true; return next })
+        if (i === DIALOGUE_LINES.length - 1) setDialogueDone(true)
+      }, DIALOGUE_LINES[i].delay + 400)
+      dialogueTimersRef.current.push(t)
+    })
+  }, [contentVisible, skipped])
+
+  // The rest of the body (paragraph/signature/phases) is always visible
+  // once the title appears — not gated by dialogue at all, per feedback.
+  // infoDone (which the scroll-lock effect below reads as "safe to
+  // unlock") matches that.
   useEffect(() => {
     if (!contentVisible || skipped) return
     setInfoDone(true)
@@ -271,6 +380,9 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
     if (skipped || infoDone) return
     setSkipped(true)
     setContentVisible(true)
+    dialogueTimersRef.current.forEach(t => clearTimeout(t))
+    setDialogueVisible(DIALOGUE_LINES.map(() => true))
+    setDialogueDone(true)
     setInfoDone(true)
     fireRevealed()
   }, [skipped, infoDone, fireRevealed])
@@ -464,7 +576,6 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
         setSequenceStarted(true)
         contentTimeoutRef.current = setTimeout(() => {
           setContentVisible(true)
-          fireRevealed()
         }, CONTENT_DELAY_MS)
       }
     }
@@ -563,6 +674,42 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
       </>
     )
   }
+
+  // Fills in the placeholder name segment (empty text, color: 'high'|
+  // 'low') with the actual mode-appropriate name (Pink/Green or Orange/
+  // Blue) and colors it — every other segment renders as plain text.
+  const renderDialogueLine = (line: DialogueLine) => (
+    <>
+      {line.segments.map((seg, i) => {
+        if (seg.color && seg.text === '') {
+          return <span key={i} style={{ color: seg.color === 'high' ? highColor : lowColor, fontWeight: 700 }}>{getDialogueName(mode, seg.color)}</span>
+        }
+        if (seg.color) {
+          return <span key={i} style={{ color: seg.color === 'high' ? highColor : lowColor, fontWeight: 700 }}>{seg.text}</span>
+        }
+        return <span key={i}>{seg.text}</span>
+      })}
+    </>
+  )
+
+  // Same visual convention as GraphSectionElementary's own comic-strip
+  // dialogue bubbles (border color, tail, shadow) — this file's speakers
+  // are static figures rather than moving graph nodes, so isRight just
+  // flips text-align/tail-side the same way.
+  const dialogueBubbleStyle = (isRight: boolean, color: string, maxWidth?: string) => ({
+    backgroundColor: 'white',
+    border: `2px solid ${color}`,
+    borderRadius: '12px',
+    padding: '0.5rem 0.75rem',
+    fontFamily: "'Kiwi Maru', serif",
+    fontSize: isMobile ? 'clamp(0.65rem, 2.8vw, 0.85rem)' : 'clamp(0.8rem, 1.2vw, 1rem)',
+    color: '#111',
+    lineHeight: 1.4,
+    boxShadow: '0 7px 17px rgba(0,0,0,0.24)',
+    position: 'absolute' as const,
+    textAlign: isRight ? 'right' as const : 'left' as const,
+    maxWidth: maxWidth ?? (isMobile ? '150px' : '220px'),
+  })
 
   return (
     <div
@@ -667,7 +814,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             // nested scroll region doesn't have the same
             // gesture-capture/frozen-feeling failure mode touch does.
             overflowY: isMobile ? 'visible' : 'auto',
-            padding: isMobile ? '7.5rem 1.5rem 2.5rem 1.5rem' : '7.5rem 3rem 3rem 3rem',
+            padding: isMobile ? '7.5rem 1.5rem 5.5rem 1.5rem' : '7.5rem 3rem 6.5rem 3rem',
             gap: isMobile ? '2.2rem' : '3.2rem',
             pointerEvents: contentVisible ? 'auto' : 'none',
           }}
@@ -681,9 +828,123 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             margin: 0,
             flexShrink: 0,
           }}>
-            So...what about it?
+            Fast forward 20 years...
           </h2>
 
+          {/* Reunion dialogue — the two original protagonists, 20 years
+              on. Pink/orange (speaker: 'high') on the left, green/blue
+              ('low') on the right, pushed down further from the title.
+              Bubbles are absolutely positioned within a FIXED-height zone
+              above each figure (not normal flow) specifically so the
+              figures never move as lines reveal — the zone's height
+              covers the deepest possible bubble regardless of how many
+              are currently showing. The four bubbles stagger across BOTH
+              columns, not just within each one: pink1 (highest) ->
+              green1 -> pink2 -> green2 (lowest, closest to the figures),
+              so they read as one cascading conversation rather than two
+              independent columns. Only the bubble closest to its figure
+              gets a tail. Figures use the exact same 'bob' animation
+              (index.css) the kindergarten dots use, starting only once
+              dialogueDone — per feedback, they should read as visibly
+              happy once the conversation wraps, not before. */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            gap: isMobile ? '4rem' : '10.5rem',
+            width: '100%',
+            marginTop: isMobile ? '1.4rem' : '2.8rem',
+            flexShrink: 0,
+          }}>
+            <div style={{ position: 'relative', width: isMobile ? '170px' : '270px' }}>
+              <div style={{ position: 'relative', height: isMobile ? '11rem' : '14rem' }}>
+                {dialogueVisible[0] && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    style={{ ...dialogueBubbleStyle(false, highColor), top: '-2rem', left: isMobile ? '0.6rem' : '1rem' }}
+                  >
+                    {renderDialogueLine(DIALOGUE_LINES[0])}
+                    {!dialogueVisible[2] && (
+                      <>
+                        <div style={{ position: 'absolute', bottom: '-10px', left: '20px', width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '10px solid white' }} />
+                        <div style={{ position: 'absolute', bottom: '-13px', left: '18px', width: 0, height: 0, borderLeft: '10px solid transparent', borderRight: '10px solid transparent', borderTop: `12px solid ${highColor}` }} />
+                      </>
+                    )}
+                  </motion.div>
+                )}
+                {dialogueVisible[2] && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    style={{ ...dialogueBubbleStyle(false, highColor), top: isMobile ? '3.2rem' : '4.8rem', left: isMobile ? '0.6rem' : '1rem' }}
+                  >
+                    {renderDialogueLine(DIALOGUE_LINES[2])}
+                    <div style={{ position: 'absolute', bottom: '-10px', left: '20px', width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '10px solid white' }} />
+                    <div style={{ position: 'absolute', bottom: '-13px', left: '18px', width: 0, height: 0, borderLeft: '10px solid transparent', borderRight: '10px solid transparent', borderTop: `12px solid ${highColor}` }} />
+                  </motion.div>
+                )}
+              </div>
+              <img
+                src={mode === 'race' ? '/assets/orange-adult.svg' : '/assets/pink-adult.svg'}
+                style={{ width: '100%', height: 'auto', display: 'block', animation: dialogueDone ? 'bob 2s ease-in-out infinite' : undefined }}
+              />
+            </div>
+            <div style={{ position: 'relative', width: isMobile ? '170px' : '270px' }}>
+              <div style={{ position: 'relative', height: isMobile ? '11rem' : '14rem' }}>
+                {dialogueVisible[1] && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    style={{ ...dialogueBubbleStyle(true, lowColor, mode === 'race' ? (isMobile ? '215px' : '320px') : (isMobile ? '190px' : '280px')), top: isMobile ? '0.6rem' : '1.4rem', right: isMobile ? '0.6rem' : '1rem' }}
+                  >
+                    {renderDialogueLine(DIALOGUE_LINES[1])}
+                    {!dialogueVisible[3] && (
+                      <>
+                        <div style={{ position: 'absolute', bottom: '-10px', right: '20px', width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '10px solid white' }} />
+                        <div style={{ position: 'absolute', bottom: '-13px', right: '18px', width: 0, height: 0, borderLeft: '10px solid transparent', borderRight: '10px solid transparent', borderTop: `12px solid ${lowColor}` }} />
+                      </>
+                    )}
+                  </motion.div>
+                )}
+                {dialogueVisible[3] && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    style={{ ...dialogueBubbleStyle(true, lowColor), top: isMobile ? '5.8rem' : '8.2rem', right: isMobile ? '0.6rem' : '1rem' }}
+                  >
+                    {renderDialogueLine(DIALOGUE_LINES[3])}
+                    <div style={{ position: 'absolute', bottom: '-10px', right: '20px', width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '10px solid white' }} />
+                    <div style={{ position: 'absolute', bottom: '-13px', right: '18px', width: 0, height: 0, borderLeft: '10px solid transparent', borderRight: '10px solid transparent', borderTop: `12px solid ${lowColor}` }} />
+                  </motion.div>
+                )}
+              </div>
+              <img
+                src={mode === 'race' ? '/assets/blue-adult.svg' : '/assets/green-adult.svg'}
+                style={{ width: '100%', height: 'auto', display: 'block', animation: dialogueDone ? 'bob 2s ease-in-out infinite' : undefined, animationDelay: '0.4s' }}
+              />
+            </div>
+          </div>
+
+          {/* Rest of the body — per feedback, NOT part of the dialogue
+              animation; always on screen, same as before dialogue was
+              added. Extra marginTop here creates the requested gap
+              between the adult figures above and this paragraph. Also
+              the trigger point for fireRevealed now (see the
+              IntersectionObserver effect above) — NavBar's auto-reveal
+              used to fire the instant contentVisible flipped true (title
+              appearing); per feedback it should wait until the user has
+              actually scrolled down past the adult figures/dialogue to
+              this section instead. */}
+          <div
+            ref={bodyRef}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              width: '100%', gap: isMobile ? '2.2rem' : '3.2rem',
+              marginTop: isMobile ? '2.6rem' : '4.2rem',
+            }}
+          >
           <div style={{
             position: 'relative', width: '100%', maxWidth: '950px', flexShrink: 0,
             marginBottom: isMobile ? 0 : '1.4rem',
@@ -721,7 +982,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
               justifyContent: 'center',
               gap: isMobile ? '0.7rem' : '1.5rem',
               width: '100%', maxWidth: '760px', flexShrink: 0,
-              marginTop: isMobile ? '-0.7rem' : '-8.6rem',
+              marginTop: isMobile ? '1rem' : '-5.6rem',
               position: 'relative',
               zIndex: 2,
               // Manual nudge right on desktop — the centering math checked
@@ -807,7 +1068,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             maxWidth: isMobile ? undefined : '1650px',
             padding: isMobile ? 0 : '0',
             flexShrink: 0,
-            marginTop: isMobile ? '0.3rem' : '-2.8rem',
+            marginTop: isMobile ? '2.5rem' : '0.8rem',
             position: 'relative',
             zIndex: 1,
           }}>
@@ -819,6 +1080,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
               src={mode === 'race' ? '/assets/phases-blue.svg' : '/assets/phases-green.svg'}
               style={{ width: isMobile ? '150px' : '330px', height: 'auto', display: 'block' }}
             />
+          </div>
           </div>
         </motion.div>
       </div>

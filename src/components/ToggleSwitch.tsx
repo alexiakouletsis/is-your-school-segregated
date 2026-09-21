@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { Mode } from '../App'
 
@@ -39,7 +38,6 @@ export default function ToggleSwitch({
   scale = 1,
 }: Props) {
   const isRace = mode === 'race'
-  const [hovered, setHovered] = useState(false)
   const isMobile = useIsMobile()
   // trackWidth is the only size chosen directly (matching the toggle's
   // original on-screen scale, times the optional scale override);
@@ -58,12 +56,8 @@ export default function ToggleSwitch({
   return (
     <div
       onClick={(e) => { e.stopPropagation(); onToggle() }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: isMobile ? '1.1rem' : `${1.4 * scale}rem`, justifyContent: 'center',
-        transform: hovered ? 'scale(1.08)' : 'scale(1)',
-        transition: 'transform 0.2s ease',
       }}
     >
       <span style={{ fontFamily: "'Kiwi Maru', serif", fontSize: isMobile ? 'clamp(1rem, 2.2vw, 1.35rem)' : `${1.3 * scale}rem` }}>

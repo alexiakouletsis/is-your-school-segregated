@@ -16,7 +16,8 @@ interface Dot {
 const SES_COLORS = ['#FF8BDE', '#FF8BDE', '#22D880', '#22D880', '#FF8BDE', '#22D880']
 const RACE_COLORS = ['#FF9260', '#FF9260', '#8BA4FF', '#8BA4FF', '#FF9260', '#8BA4FF']
 
-const PARA = "Typically middle school brings more varied schedules and chances to meet different people. But in schools with curricular tracking, ironically, students from different backgrounds often end up in segregated classrooms and disconnected from one another. Let's zoom in on what a middle school with less classroom segregation versus one with more classroom segregation looks like."
+const PARA_BEFORE = "Typically "
+const PARA_AFTER = " brings more varied schedules and chances to meet different people. But in schools with curricular tracking, ironically, students from different backgrounds often end up in segregated classrooms and disconnected from one another. Let's zoom in on what a middle school with less classroom segregation versus one with more classroom segregation looks like."
 
 function generateDots(mode: Mode, count: number): Dot[] {
   const colors = mode === 'race' ? RACE_COLORS : SES_COLORS
@@ -319,7 +320,7 @@ export default function Section02({ mode, skipSignal: _skipSignal }: { mode: Mod
             height: isMobile ? '22em' : '11em',
             overflow: 'hidden',
           }}>
-            {PARA}
+            {PARA_BEFORE}<strong>middle school</strong>{PARA_AFTER}
           </p>
 
           <div style={{

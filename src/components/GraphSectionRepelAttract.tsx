@@ -8,16 +8,15 @@ import type { Node } from './graphTypes'
 // A small, bespoke two-node illustration of the core graph mechanics
 // (repulsion when unconnected, attraction + an edge when connected).
 //
-// Desktop: scroll position determines WHEN each phase triggers (crossing
-// a threshold), and the actual motion plays out as a real, time-based
-// animation (Framer's imperative animate()) once triggered.
-//
-// Mobile: scroll still brings the nodes into view/holds them in place
-// (showPanel), but the repel->attract transition itself is TAP-driven —
-// matching how the other graph sections (GraphSection45 etc.) handle
-// mobile navigation, rather than continuous/threshold-based scrolling.
-// Tapping the right half advances, the left half goes back, with the
-// same "tap to go forward/back" hints those sections use.
+// Both platforms: scroll brings the nodes into view/holds them in place
+// (showPanel) and drives the background fade in/out. Phase changes
+// (repel <-> attract) are no longer scroll-triggered on desktop either —
+// both platforms are click/tap-driven now, matching how the other graph
+// sections (GraphSectionElementary etc.) handle navigation. Desktop uses
+// explicit "Click to go back"/"Click to go forward" buttons; mobile taps
+// the left/right half of the graph panel. The actual motion, once
+// triggered, is a real time-based animation either way (Framer's
+// imperative animate()).
 const NODE_1 = { id: 0, ses: 'higher', race_ethnicity: 'white_asian' } as Node
 
 const REPEL_LABEL = "Students who don't share classes will repel from each other."
@@ -27,7 +26,9 @@ const EDGE_NOTICE = "Two students who share at least one class are connected by 
 const TOTAL_VH = 320
 
 const D_HOLD_END = 0.17
-const D_REPEL_REACHED = 0.17
+// No longer a phase-trigger threshold (repel/attract are click-driven
+// now) — just marks where the background starts fading back out as the
+// user scrolls on past this section.
 const D_ATTRACT_REACHED = 0.55
 
 const M_HOLD_END = 0.15
@@ -67,7 +68,14 @@ function buildShakeKeyframes(startPct: string, endPct: string): string[] {
 }
 const SHAKE_TIMES = [0, 0.55, 0.68, 0.8, 0.9, 1]
 
-export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
+export default function GraphSectionRepelAttract({ mode, navBarVisible }: {
+  mode: Mode
+  // Reported by NavBar itself, threaded down through App.tsx ->
+  // ArticleSection. Bumps this section's own "Click to go back"/"Click to
+  // go forward" buttons down to clear NavBar, matching the persistent
+  // toggle's own equivalent bump — see App.tsx's toggle-position comment.
+  navBarVisible?: boolean
+}) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   const graphPanelRef = useRef<HTMLDivElement>(null)
@@ -115,6 +123,7 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
   const bgOpacity = useMotionValue(0)
 
   const [showPanel, setShowPanel] = useState(false)
+  const showPanelRef = useRef(false)
   // Tells App.tsx's toggle-shadow whether this section is "visually
   // showing graph content" — deliberately NOT tied to showPanel, which
   // (like bgOpacity before its own fix) never reverts to false on
@@ -131,6 +140,20 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
     }
   }, [isVisuallyActive])
   const [phase, setPhase] = useState<'repel' | 'attract'>('repel')
+
+  // Tells App.tsx's persistent toggle to bump down and clear this
+  // section's own "Click to go forward" button — see that file's own
+  // comment. Only relevant while phase === 'repel' (the forward button's
+  // own render condition below); the back button shows for 'attract'
+  // instead, but per feedback only the forward button needs to bump the
+  // toggle.
+  useEffect(() => {
+    const isForwardButtonShown = isVisuallyActive && !isMobile && showPanel && phase === 'repel'
+    window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'repel-attract', active: isForwardButtonShown } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'repel-attract', active: false } }))
+    }
+  }, [isVisuallyActive, isMobile, showPanel, phase])
 
   // Repel's own label now fades in (matching the other graph sections'
   // step-label convention) instead of typing character-by-character —
@@ -192,16 +215,30 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
     setPhase('attract')
   }
 
-  // Desktop only: scroll position triggers phase changes automatically.
+  // Desktop: scroll position still brings the panel into view/holds it
+  // (showPanel) and drives the background fade in/out — but no longer
+  // triggers repel/attract itself. Per feedback, phase changes are now
+  // click-driven (see the "Click to go back"/"Click to go forward"
+  // buttons below), matching GraphSectionElementary's own desktop button
+  // navigation instead of scroll thresholds.
   useEffect(() => {
     if (isMobile) return
     return scrollYProgress.on('change', (v) => {
+      const wasShowingPanel = showPanelRef.current
       setShowPanel(v >= holdEnd)
+      showPanelRef.current = v >= holdEnd
       if (v < holdEnd) {
         bgAnimRef.current?.stop()
         bgOpacity.set(0)
         hasFadedInRef.current = false
         setIsVisuallyActive(false)
+        // Scrolled back above hold — reset so the panel starts fresh
+        // (repel, nodes at CLOSE) the next time it's reached.
+        hasRepelledRef.current = false
+        hasAttractedRef.current = false
+        node1Left.set(CLOSE[0])
+        node2Left.set(CLOSE[1])
+        edgeOpacity.set(0)
       } else if (v < fadeOutStart) {
         if (!hasFadedInRef.current) {
           hasFadedInRef.current = true
@@ -215,16 +252,11 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
         bgOpacity.set(1 - fadeProgress)
         setIsVisuallyActive(fadeProgress < 0.3)
       }
-      if (v >= D_ATTRACT_REACHED) triggerAttract()
-      else if (v >= D_REPEL_REACHED) triggerRepel()
-      else {
-        // Scrolled back above repel — reset both triggers and node
-        // position so scrolling forward again re-triggers cleanly.
-        hasRepelledRef.current = false
-        hasAttractedRef.current = false
-        animate(node1Left, CLOSE[0], { duration: 0.6, ease: 'easeInOut' })
-        animate(node2Left, CLOSE[1], { duration: 0.6, ease: 'easeInOut' })
-        animate(edgeOpacity, 0, { duration: 0.3 })
+      // First time the panel appears, land on repel automatically —
+      // matches mobile's own "first time in view -> repel" convention;
+      // every phase change after this is click-only.
+      if (!wasShowingPanel && v >= holdEnd && !hasRepelledRef.current && !hasAttractedRef.current) {
+        triggerRepel()
       }
     })
   }, [scrollYProgress, isMobile, holdEnd, fadeOutStart])
@@ -274,137 +306,6 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
     if (!isMobile) return
     animate(mobileNodeTopMV, showPanel ? '50%' : '18%', { duration: 0.4, ease: 'easeInOut' })
   }, [isMobile, showPanel])
-
-  // Scroll resistance — desktop only (mobile's graph phases are tap-
-  // driven now, so there's nothing for scroll resistance to protect
-  // there). Same always-block-until-enough-delta-pushed-through pattern
-  // the grade4/5 -> next section transition already uses reliably,
-  // instead of a reactive wall-clock buffer keyed off scrollYProgress —
-  // that Framer motion value's recompute can lag several wheel events
-  // behind on a fast flick, which was exactly why the FIRST scroll-in
-  // could sail through both zones before either buffer ref ever got set
-  // (a second attempt worked because by then real scroll position had
-  // already caught up from the first pass). Zone detection here reads the
-  // container's live getBoundingClientRect() directly on every wheel
-  // event instead — always in sync with the actual current scroll
-  // position, no async recompute lag involved. Repel's threshold cut
-  // down per earlier feedback that it was way too sticky; attract's
-  // stays generous.
-  const REPEL_BLOCK_DELTA = 550
-  const ATTRACT_BLOCK_DELTA = 550
-  const repelDeltaAccumRef = useRef(0)
-  const attractDeltaAccumRef = useRef(0)
-  // Tracks the previous wheel event's own v so a single aggressive scroll
-  // that jumps clean over an entire zone in one tick can be caught and
-  // corrected, rather than only ever checking whichever zone the jump
-  // happened to land in. Without this, a fast-enough flick could move v
-  // from before D_REPEL_REACHED to past D_ATTRACT_REACHED within one
-  // wheel event — the very first time this handler ever sees it, v is
-  // already in attract's own zone, so repel's resistance check never runs
-  // at all, and the same can happen scrolling far enough past attract in
-  // one event too.
-  const lastVRef = useRef(0)
-  // Some browsers (Safari with trackpad momentum, in particular) won't let
-  // JS cancel an already-started INERTIAL scroll via preventDefault, no
-  // matter how the listener is registered — the deltaY events keep coming
-  // from the OS's own momentum simulation, not a cancelable input. That's
-  // a real candidate for "still blows through on the very first flick"
-  // even with the gating logic above computed correctly. This locks the
-  // scrollY position the moment a zone is entered while delta is still
-  // owed, and forcibly snaps back to it if the browser lets the page
-  // drift away anyway — the same lock-and-correct pattern already used
-  // (and confirmed working) for the grade5 exit lock elsewhere in this
-  // codebase, just not relying on preventDefault alone this time.
-  const lockedScrollYRef = useRef<number | null>(null)
-  useEffect(() => {
-    if (isMobile) return
-    const handleWheel = (e: WheelEvent) => {
-      if (!containerRef.current || e.ctrlKey) return
-      const rect = containerRef.current.getBoundingClientRect()
-      if (rect.top > 0 || rect.bottom <= 0) return
-      // Same "start start" -> "end start" mapping this component's own
-      // useScroll target/offset uses, computed straight from the live
-      // rect rather than read from scrollYProgress.
-      const v = Math.min(1, Math.max(0, -rect.top / rect.height))
-      const prevV = lastVRef.current
-      lastVRef.current = v
-
-      if (e.deltaY <= 0) {
-        // Scrolling backward resets both — re-entering a zone forward
-        // again always requires a fresh push, same as
-        // useGraphSection's own accumulatedDeltaRef behavior.
-        repelDeltaAccumRef.current = 0
-        attractDeltaAccumRef.current = 0
-        lockedScrollYRef.current = null
-        return
-      }
-
-      // A fixed property of the container's position in the document —
-      // doesn't change as the page scrolls, so this is safe to compute
-      // fresh each time and reuse for either correction below.
-      const containerTopAbsolute = window.scrollY + rect.top
-
-      // Caught a jump that skipped the entire repel zone in one go
-      // (started before it, landed at or past attract) — snap back to
-      // right at repel's own threshold instead of letting attract's
-      // resistance check run against wherever the jump actually landed.
-      if (prevV < D_REPEL_REACHED && v >= D_ATTRACT_REACHED) {
-        const targetScrollY = containerTopAbsolute + D_REPEL_REACHED * rect.height
-        window.scrollTo(0, targetScrollY)
-        lockedScrollYRef.current = targetScrollY
-        repelDeltaAccumRef.current = 0
-        e.preventDefault()
-        return
-      }
-      // Same idea for overshooting well past attract's own threshold in
-      // one jump, starting from before it — snap back to right at
-      // attract's threshold so its resistance can't be skipped either.
-      if (prevV < D_ATTRACT_REACHED && v > D_ATTRACT_REACHED + 0.05) {
-        const targetScrollY = containerTopAbsolute + D_ATTRACT_REACHED * rect.height
-        window.scrollTo(0, targetScrollY)
-        lockedScrollYRef.current = targetScrollY
-        attractDeltaAccumRef.current = 0
-        e.preventDefault()
-        return
-      }
-
-      if (v >= D_REPEL_REACHED && v < D_ATTRACT_REACHED) {
-        repelDeltaAccumRef.current += e.deltaY
-        if (repelDeltaAccumRef.current < REPEL_BLOCK_DELTA) {
-          if (lockedScrollYRef.current === null) lockedScrollYRef.current = window.scrollY
-          e.preventDefault()
-        } else {
-          lockedScrollYRef.current = null
-        }
-      } else if (v >= D_ATTRACT_REACHED) {
-        attractDeltaAccumRef.current += e.deltaY
-        if (attractDeltaAccumRef.current < ATTRACT_BLOCK_DELTA) {
-          if (lockedScrollYRef.current === null) lockedScrollYRef.current = window.scrollY
-          e.preventDefault()
-        } else {
-          lockedScrollYRef.current = null
-        }
-      } else {
-        lockedScrollYRef.current = null
-      }
-    }
-    window.addEventListener('wheel', handleWheel, { passive: false })
-    // Corrective safety net — runs on every real scroll event regardless
-    // of whether it was triggered by a wheel event we could intercept.
-    // Only acts while a lock is actively held (i.e. delta is still owed),
-    // and only when drift is actually detected, so this is a no-op
-    // whenever preventDefault already did its job.
-    const handleScroll = () => {
-      if (lockedScrollYRef.current !== null && Math.abs(window.scrollY - lockedScrollYRef.current) > 1) {
-        window.scrollTo(0, lockedScrollYRef.current)
-      }
-    }
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => {
-      window.removeEventListener('wheel', handleWheel)
-      window.removeEventListener('scroll', handleScroll)
-    }
-  }, [isMobile])
 
   return (
     <div
@@ -506,6 +407,46 @@ export default function GraphSectionRepelAttract({ mode }: { mode: Mode }) {
           }}
           style={{ flex: 1, minHeight: 0, height: isMobile ? undefined : '100%', position: 'relative', cursor: (isMobile && showPanel) ? 'pointer' : undefined }}
         >
+          {/* Desktop-only "Click to go back"/"Click to go forward" —
+              replaces scroll-driven phase advancement (see the removed
+              wheel-resistance handler and scroll-triggering above).
+              Exact same convention as GraphSectionElementary's own
+              buttons: same size/rounding/font, top corners of this graph
+              panel, no cursor override (site's custom cursor SVG). Only
+              two phases here, so back shows on attract (goes to repel)
+              and forward shows on repel (goes to attract) — never both
+              at once. */}
+          {!isMobile && showPanel && phase === 'attract' && (
+            <motion.div
+              onClick={(e) => { e.stopPropagation(); triggerRepel() }}
+              whileHover={{ scale: 1.05 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', left: '1rem', zIndex: 5,
+                fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              }}
+            >
+              ← Click to go back
+            </motion.div>
+          )}
+          {!isMobile && showPanel && phase === 'repel' && (
+            <motion.div
+              onClick={(e) => { e.stopPropagation(); triggerAttract() }}
+              whileHover={{ scale: 1.05 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', right: '1rem', zIndex: 5,
+                fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              }}
+            >
+              Click to go forward →
+            </motion.div>
+          )}
+
           {isMobile && showPanel && noticeText && (
             <div style={{ position: 'absolute', top: '2.2rem', left: '16%', right: '16%', zIndex: 5, padding: '0.6rem 1rem', backgroundColor: 'rgba(250,249,246,0.92)', borderRadius: '8px' }}>
               <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.6rem, 2.5vw, 0.75rem)', color: '#111', lineHeight: 1.5, margin: 0, textAlign: 'center' }}>

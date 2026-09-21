@@ -41,13 +41,22 @@ interface Props {
   // full reasoning. Forwarded straight through to it; drives NavBar's
   // one-time auto-reveal in App.tsx.
   onRevealed?: () => void
-  // Fires once GraphSectionElementary has been fully scrolled past (see
-  // its own onExited prop). Drives App.tsx's persistent toggle reveal —
-  // per feedback, the toggle should stay hidden through the intro and
-  // elementary section, and probably a bit further (exact point still
-  // TBD), so this wiring is a placeholder trigger point that's easy to
-  // move to a later section once that's decided.
+  // No longer wired to anything (see App.tsx's toggleRevealed comment) —
+  // GraphSectionElementary itself still calls this on exit, but App.tsx
+  // doesn't act on it anymore. onRaceIntroReached below is the real
+  // trigger now.
   onElementaryExited?: () => void
+  // Fires once, the first time GraphSection68's race-toggle-intro pause
+  // (its step 1) is reached — permanently reveals App.tsx's persistent
+  // SES/race toggle.
+  onRaceIntroReached?: () => void
+  // Fallback for the same reveal: fires once GraphSection68 has been
+  // fully scrolled past regardless of whether onRaceIntroReached ever
+  // fired — covers a user scrolling/jumping past that whole section
+  // without reaching step 1, which would otherwise leave the toggle
+  // permanently hidden. App.tsx reveals on whichever of these two fires
+  // first.
+  onGraph68Exited?: () => void
   graphResetSignal?: number
   // Each bumped independently by App.tsx's skipAnimationsUpTo, only for
   // sections before whichever nav destination was actually clicked — see
@@ -60,6 +69,14 @@ interface Props {
   skipSection03Part2Signal?: number
   mode: Mode
   forceStart?: number
+  // Passed straight through to each graph section with click-driven
+  // navigation (GraphSectionElementary, GraphSection68,
+  // GraphSectionRepelAttract, GraphSection912 — all four now), so each
+  // can bump its own "Click to go forward"/"Click to go back" buttons
+  // down when NavBar is showing — see App.tsx's own toggle-position
+  // comment for the full picture of why this needs to happen at both
+  // levels.
+  navBarVisible?: boolean
 }
 
 // Single adjustable knob for the intro block's mobile vertical centering —
@@ -72,6 +89,8 @@ export default function ArticleSection({
   onToggleModeAndScrollTop = () => {},
   onRevealed = () => {},
   onElementaryExited = () => {},
+  onRaceIntroReached = () => {},
+  onGraph68Exited = () => {},
   graphResetSignal = 0,
   skipSection02Signal,
   skipSection03IntroSignal,
@@ -80,6 +99,7 @@ export default function ArticleSection({
   onSection03Part2AnimDone = () => {},
   onSection03Part2OverlaySettled = () => {},
   onSection03Part2AnimReset = () => {},
+  navBarVisible = false,
 }: Props) {
   const isMobile = useIsMobile()
 
@@ -135,30 +155,34 @@ export default function ArticleSection({
         }}>
           {/* Title — same styling convention as Section01Part2's own
               title (before that file was taken out of the flow), just
-              living here now instead. */}
+              living here now instead. Margin-bottom matches Section02's
+              own title-to-body gap (2.5rem), per feedback to keep this
+              section's spacing consistent with that one. */}
           <h2 style={{
             fontFamily: "'Gaegu', cursive",
             fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.8rem)' : 'clamp(2rem, 5vw, 4rem)',
-            color: '#111', fontWeight: 400, textAlign: 'center', margin: '0 0 1rem 0',
+            color: '#111', fontWeight: 400, textAlign: 'center', margin: '0 0 2.5rem 0',
           }}>
             Section 01: Elementary School
           </h2>
+          {/* Font size and maxWidth now match Section02's own body
+              paragraph exactly, per feedback. */}
           <p style={{
             fontFamily: "'Kiwi Maru', serif",
-            fontSize: isMobile ? 'clamp(0.98rem, 3.8vw, 1.22rem)' : 'clamp(1.28rem, 2.1vw, 1.65rem)',
-            color: '#111', lineHeight: 1.9, margin: 0,
+            fontSize: isMobile ? 'clamp(0.9rem, 3.5vw, 1.1rem)' : 'clamp(1.05rem, 1.9vw, 1.35rem)',
+            color: '#111', lineHeight: 1.9, maxWidth: '940px', margin: '0 auto',
           }}>
             {mode === 'ses' ? (
               <>
                 Take these two students entering kindergarten. One of them comes from a{' '}
-                <span style={{ color: 'var(--color-high-ses)' }}>higher-SES</span> family, and the other from a{' '}
-                <span style={{ color: 'var(--color-low-ses)' }}>lower-SES</span> family. Let's trace who they share classes with throughout elementary school.
+                <span style={{ color: 'var(--color-high-ses)' }}>higher-socioeconomic status (SES)</span> family, and the other from a{' '}
+                <span style={{ color: 'var(--color-low-ses)' }}>lower-SES</span> family. Right now, they're just two little kindergarteners about to enter the world. Let's observe how societal systems influence their classes and shape their interactions throughout their lives, starting with <strong>elementary school</strong>.
               </>
             ) : (
               <>
                 Take these two students entering kindergarten. One of them is a{' '}
                 <span style={{ color: 'var(--color-race-1)' }}>white/asian student</span>, and the other is a{' '}
-                <span style={{ color: 'var(--color-race-2)' }}>student of color</span>. Let's trace who they share classes with throughout elementary school.
+                <span style={{ color: 'var(--color-race-2)' }}>student of color</span>. Right now, they're just two little kindergarteners about to enter the world. Let's observe how societal systems influence their classes and shape their interactions throughout their lives, starting with <strong>elementary school</strong>.
               </>
             )}
           </p>
@@ -171,7 +195,7 @@ export default function ArticleSection({
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           gap: isMobile ? '3rem' : '6rem',
-          width: '100%', maxWidth: '600px', margin: isMobile ? '3rem auto 0 auto' : '5.5rem auto 0 auto',
+          width: '100%', maxWidth: '940px', margin: isMobile ? '3rem auto 0 auto' : '5.5rem auto 0 auto',
         }}>
           <img src={mode === 'race' ? '/assets/whiteasian-dot-K3.svg' : '/assets/high-SES-dot-K3.svg'} style={{
             width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 12vw, 160px)',
@@ -191,14 +215,14 @@ export default function ArticleSection({
           School" title/intro text block comes back later. */}
       {/* <Section01Part2 mode={mode} /> */}
 
-      <GraphSectionElementary mode={mode} resetSignal={graphResetSignal} onExited={onElementaryExited} />
+      <GraphSectionElementary mode={mode} resetSignal={graphResetSignal} onExited={onElementaryExited} navBarVisible={navBarVisible} />
 
       {/* Simple title-only breather, then back into GraphSectionRepelAttract. */}
       <GraphExplainerIntro />
-      <GraphSectionRepelAttract mode={mode} />
+      <GraphSectionRepelAttract mode={mode} navBarVisible={navBarVisible} />
 
       <Section02 mode={mode} skipSignal={skipSection02Signal} />
-      <GraphSection68 mode={mode} resetSignal={graphResetSignal} />
+      <GraphSection68 mode={mode} resetSignal={graphResetSignal} onRaceIntroReached={onRaceIntroReached} navBarVisible={navBarVisible} onExited={onGraph68Exited} />
       <Section03Intro mode={mode} skipSignal={skipSection03IntroSignal} />
       <CourseClusterSection mode={mode} />
       <Section03Part2
@@ -208,7 +232,7 @@ export default function ArticleSection({
         skipSignal={skipSection03Part2Signal}
         mode={mode}
       />
-      <GraphSection912 mode={mode} resetSignal={graphResetSignal} />
+      <GraphSection912 mode={mode} resetSignal={graphResetSignal} navBarVisible={navBarVisible} />
       <Conclusion
         mode={mode}
         onToggleModeAndScrollTop={onToggleModeAndScrollTop}

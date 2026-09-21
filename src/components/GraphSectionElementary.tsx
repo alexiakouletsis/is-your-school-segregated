@@ -86,7 +86,9 @@ const DIALOGUE = [
   { node: 'high', text: "Yes!", delay: 2300 },
 ]
 
-const PARA1 = "In some schools around the 4th grade, students transition from being in one fixed room to sharing multiple classes with peers. This causes networks to go from looking like pods to integrated webs."
+const PARA1_BEFORE = "In some schools around the 4th grade, students transition from being in one fixed room to sharing multiple classes with peers. This causes networks to go from looking like "
+const PARA1_MID = " to "
+const PARA1_AFTER = "."
 
 // A handful of nodes across grades K-5 have "Speech" as their ONLY listed
 // class — outliers that aren't representative of a real shared-class
@@ -133,7 +135,7 @@ const STEPS: { label: string, type: StepType }[] = [
 const K3_LAST_STEP = 4
 const GRADE45_START = 6
 
-export default function GraphSectionElementary({ mode, onGrade3Complete, resetSignal, onExited }: {
+export default function GraphSectionElementary({ mode, onGrade3Complete, resetSignal, onExited, navBarVisible }: {
   mode: Mode
   onGrade3Complete?: (nodes: Node[]) => void
   resetSignal?: number
@@ -143,6 +145,12 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
   // comment: the exact point the toggle should appear is still TBD, so this
   // is a placeholder trigger, easy to move to a later section once decided.
   onExited?: () => void
+  // Reported by NavBar itself, threaded down through App.tsx ->
+  // ArticleSection. Bumps this section's own "Click to go back"/"Click to
+  // go forward" buttons down to clear NavBar, matching the persistent
+  // toggle's own equivalent bump — see App.tsx's toggle-position comment
+  // for the full picture of why this needs to happen at both levels.
+  navBarVisible?: boolean
 }) {
   const [k3GraphData, setK3GraphData] = useState<(GraphData | null)[]>([null, null, null, null])
   const [grade45Data, setGrade45Data] = useState<(GraphData | null)[]>([null, null])
@@ -257,6 +265,22 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
       window.dispatchEvent(new CustomEvent('graphSectionActive', { detail: { id: 'elementary', active: false } }))
     }
   }, [isVisuallyActive])
+
+  // Tells App.tsx's persistent toggle to bump down and clear this
+  // section's own "Click to go forward" button — see that file's own
+  // comment. Gated on isVisuallyActive too (not just the button's own
+  // render condition, currentStep !== STEPS.length - 1), since this
+  // component stays mounted with whatever currentStep it was last on even
+  // once the user has scrolled well past it to a different section —
+  // without that gate, this would falsely keep reporting its own forward
+  // button as active long after it's actually off-screen.
+  useEffect(() => {
+    const isForwardButtonShown = isVisuallyActive && !isMobile && currentStep !== STEPS.length - 1
+    window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'elementary', active: isForwardButtonShown } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'elementary', active: false } }))
+    }
+  }, [isVisuallyActive, isMobile, currentStep])
 
   const [noticeText, setNoticeText] = useState('')
   const noticeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -941,7 +965,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
-                position: 'absolute', top: '1.5rem', left: '1rem', zIndex: 5,
+                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', left: '1rem', zIndex: 5,
                 fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
                 backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
@@ -968,7 +992,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
-                position: 'absolute', top: '1.5rem', right: '1rem', zIndex: 5,
+                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', right: '1rem', zIndex: 5,
                 fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
                 backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
@@ -1070,7 +1094,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
                 fontSize: isMobile ? 'clamp(0.85rem, 3.5vw, 1.05rem)' : 'clamp(1rem, 1.7vw, 1.35rem)',
                 color: '#111', lineHeight: 1.8, textAlign: 'center', margin: 0, maxWidth: '760px',
               }}>
-                {PARA1}
+                {PARA1_BEFORE}<strong>pods</strong>{PARA1_MID}<strong>integrated webs</strong>{PARA1_AFTER}
               </p>
               <p style={{
                 position: 'relative', zIndex: 1,

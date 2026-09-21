@@ -59,6 +59,28 @@ function App() {
     return () => window.removeEventListener('graphSectionActive', handler)
   }, [])
 
+  // Same pattern as graphSectionActive just above, but tracking
+  // specifically whether any graph section's own "Click to go forward"
+  // button is currently on screen — the persistent toggle needs to bump
+  // down to avoid covering it (see the toggle's own top calculation
+  // below). Each graph section with click-driven navigation
+  // (GraphSectionElementary, GraphSection68, GraphSectionRepelAttract,
+  // GraphSection912) dispatches 'graphForwardButtonActive' with {id,
+  // active} whenever its own forward button's visibility condition
+  // changes.
+  const [forwardButtonVisible, setForwardButtonVisible] = useState(false)
+  useEffect(() => {
+    const activeButtons = new Set<string>()
+    const handler = (e: Event) => {
+      const { id, active } = (e as CustomEvent<{ id: string, active: boolean }>).detail
+      if (active) activeButtons.add(id)
+      else activeButtons.delete(id)
+      setForwardButtonVisible(activeButtons.size > 0)
+    }
+    window.addEventListener('graphForwardButtonActive', handler)
+    return () => window.removeEventListener('graphForwardButtonActive', handler)
+  }, [])
+
   // Gates scrolling until the landing page's own assets (images + fonts)
   // are actually ready. Purely as-needed — no artificial minimum display
   // time — it just waits for the real assets/fonts, or a 5s safety-net
@@ -119,14 +141,10 @@ function App() {
   // very start of the article, so the trigger moved to "reached the
   // conclusion" instead of "clicked its toggle."
   const [reachedConclusion, setReachedConclusion] = useState(false)
-  // Persistent toggle stays hidden through the intro and the elementary
-  // section per feedback — it'll be explicitly introduced later, further
-  // into the article. Currently wired to GraphSectionElementary's own
-  // onExited (via ArticleSection's onElementaryExited) as a placeholder
-  // trigger point; the exact reveal point is still TBD (feedback mentions
-  // "probably a bit more of the article" beyond elementary), so this is
-  // the one line to move once that's decided — swap which callback below
-  // calls setToggleRevealed(true).
+  // Persistent toggle reveal — permanently flips true the first time the
+  // user reaches GraphSection68's race-toggle-intro pause (its step 1),
+  // via ArticleSection's onRaceIntroReached. One-way: never reset back to
+  // false, even if the user scrolls back up past that point afterward.
   const [toggleRevealed, setToggleRevealed] = useState(false)
   // Reported by NavBar itself (desktop only — see its own comment) so the
   // persistent toggle can be bumped down while the bar is showing, rather
@@ -580,6 +598,7 @@ function App() {
       />
       <ArticleSection
         forceStart={forceSection01Start}
+        navBarVisible={navBarVisible}
         onAnimDone={() => {
           setSectionAnimDone(true)
           // No tap gate on mobile anymore — once typing's done (or skipped),
@@ -615,7 +634,15 @@ function App() {
         }}
         onToggleModeAndScrollTop={handleToggleModeAndScrollTop}
         onRevealed={() => setReachedConclusion(true)}
-        onElementaryExited={() => setToggleRevealed(true)}
+        // The deliberate, designed reveal moment — see GraphSection68's
+        // own race-toggle-intro pause (step 1) and its onRaceIntroReached
+        // prop.
+        onRaceIntroReached={() => setToggleRevealed(true)}
+        // Fallback: reveals on EITHER this or onRaceIntroReached above,
+        // whichever fires first — covers scrolling/jumping past
+        // GraphSection68 entirely without ever reaching step 1, which
+        // would otherwise leave the toggle permanently hidden.
+        onGraph68Exited={() => setToggleRevealed(true)}
         graphResetSignal={graphResetSignal}
         skipSection01Signal={skipSection01Signal}
         skipSection02Signal={skipSection02Signal}
@@ -647,30 +674,53 @@ function App() {
           landing page itself (gated on curtainDone, not on scroll
           position, so it can't get stuck hidden the way NavBar's own
           scroll-based detection could). The 'R' key hover hint is
-          desktop-only, moved here verbatim from NavBar.tsx. On desktop,
-          bumped down while NavBar is showing (navBarVisible, reported by
-          NavBar itself) so the two stack instead of overlapping — back to
-          its usual spot once NavBar hides. Mobile never sets
-          navBarVisible true (NavBar's hamburger sits in its own fixed
-          spot below this instead), so this has no effect there. */}
+          desktop-only, moved here verbatim from NavBar.tsx.
+          
+          Vertical position now accounts for two independent things that
+          can each push it down, per feedback that the toggle was covering
+          graph sections' own "Click to go forward" button:
+          - navBarVisible (reported by NavBar itself): unchanged from
+            before, bumps down to clear NavBar's own hamburger spot.
+          - forwardButtonVisible (reported by whichever graph section
+            currently has its forward button on screen, see the comment
+            on that state above): bumps down to clear that button instead.
+          When BOTH are true, the graph section's own forward/back buttons
+          ALSO bump themselves down first (each section handles this
+          locally, using the same navBarVisible prop passed down through
+          ArticleSection) to clear NavBar, so the toggle then needs to
+          clear the navbar-bumped button position, not the button's normal
+          one — hence the larger BOTH_TOP value below rather than just
+          summing the two independent bumps.
+          
+          All four numeric values here are estimates — I can't measure
+          NavBar's actual height or the graph buttons' actual rendered
+          height/position from here, so this needs a live pass to confirm
+          nothing overlaps in any of the four combinations. */}
       {curtainDone && toggleRevealed && (
         <div
           onMouseEnter={() => !isMobile && setTooltipVisible(true)}
           onMouseLeave={() => setTooltipVisible(false)}
           style={{
             position: 'fixed',
-            top: navBarVisible ? '4.8rem' : '1.25rem',
+            top: navBarVisible
+              ? (forwardButtonVisible ? '9rem' : '4.8rem')
+              : (forwardButtonVisible ? '5.5rem' : '1.25rem'),
             right: '1.5rem',
             zIndex: 9000,
             backgroundColor: 'rgba(250, 249, 246, 0.82)',
             borderRadius: '18px',
             padding: isMobile ? '0.4rem 0.7rem' : '0.5rem 0.9rem',
             boxShadow: isInGraphSection ? '0 4px 14px rgba(0,0,0,0.18)' : 'none',
-            // Same slight-enlarge affordance as the graph sections'
-            // "Skip to grade 3" button, and only while that same shadow
-            // is showing — reuses tooltipVisible (already tracking hover
-            // for the 'R' key hint) rather than adding separate state.
-            transform: (isInGraphSection && tooltipVisible) ? 'scale(1.05)' : 'scale(1)',
+            // Scales THIS outer pill (background + content together) on
+            // hover, matching the graph sections' forward/back buttons'
+            // 1.05 scale exactly — same convention, same trigger
+            // (tooltipVisible, already tracking hover here for the 'R'
+            // key hint). Deliberately not on ToggleSwitch's own inner
+            // content instead: that left the background pill not
+            // scaling along with it, so the text visibly outgrew its own
+            // background — the actual cause of "too exaggerated"/
+            // mismatched, not the 1.08 value itself.
+            transform: tooltipVisible ? 'scale(1.05)' : 'scale(1)',
             transition: 'box-shadow 0.3s ease, transform 0.15s ease, top 0.4s ease',
           }}
         >

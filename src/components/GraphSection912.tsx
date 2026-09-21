@@ -358,7 +358,20 @@ function keepLargestComponent(
 // ~2597 edges — both now in the same density range as grade 9 and
 // GraphSection68's 6-8, not flooding.
 function rescueDroppedNodes(
-  sampledNodes: Node[], survivingIds: Set<number>, anyWeightPool: Edge[]
+  sampledNodes: Node[], survivingIds: Set<number>, anyWeightPool: Edge[],
+  // Was a hardcoded 4 for every grade. Per feedback that grade 12
+  // specifically still reads sparser than the other three even after this
+  // rescue pass (its raw per-node density is the lowest of the four — see
+  // the DESKTOP_NODE_SAMPLE_CAP comment above — and its sample cap is
+  // already sitting at its full 284-student population, so there are no
+  // more real nodes to add without pulling in weaker ties), grade 12
+  // alone gets a lower bar (3) at the call site below — "just a bit"
+  // looser, not the full blanket MIN_EDGE_WEIGHT=1 that was already tried
+  // and rejected for over-densifying grades 10-12 into a gridded mesh.
+  // Every other grade keeps the original 4. UNTESTED against a live
+  // render — flag if grade 12 still reads too sparse, or swings the other
+  // way into looking too dense/gridded like the old >=1 attempt did.
+  minTies: number = 4
 ): { nodes: Node[]; edges: Edge[] } {
   // Build a per-node adjacency index once (O(edges)) instead of the
   // previous approach, which re-scanned the ENTIRE anyWeightPool array for
@@ -385,7 +398,7 @@ function rescueDroppedNodes(
       const other = s === n.id ? t : s
       return survivingIds.has(other)
     })
-    if (ties.length >= 4) {
+    if (ties.length >= minTies) {
       rescuedNodes.push(n)
       rescuedEdges.push(...ties)
     }
@@ -393,7 +406,15 @@ function rescueDroppedNodes(
   return { nodes: rescuedNodes, edges: rescuedEdges }
 }
 
-export default function GraphSection912({ mode, resetSignal }: { mode: Mode; resetSignal?: number }) {
+export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
+  mode: Mode
+  resetSignal?: number
+  // Reported by NavBar itself, threaded down through App.tsx ->
+  // ArticleSection. Bumps this section's own "Click to go back"/"Click to
+  // go forward" buttons down to clear NavBar, matching the persistent
+  // toggle's own equivalent bump — see App.tsx's toggle-position comment.
+  navBarVisible?: boolean
+}) {
   // [9th, 10th, 11th, 12th] — converted from the real GML course-sharing
   // data via scripts/convert_gml_to_json.py, dropped into public/data/graphs/
   // alongside the existing per-grade files.
@@ -506,6 +527,10 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
       }
       return Date.now() - stepEnteredAtRef.current < 900
     },
+    // Desktop step navigation moved to explicit forward/back buttons (see
+    // their render further down) instead of scroll — mobile is unaffected
+    // either way, since it already only navigates via tap.
+    disableScrollNav: true,
   })
 
   // Mobile-only: the main graph effect below waits for this to catch up
@@ -571,6 +596,20 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
       window.dispatchEvent(new CustomEvent('graphSectionActive', { detail: { id: 'graph-912', active: false } }))
     }
   }, [isVisuallyActive])
+
+  // Tells App.tsx's persistent toggle to bump down and clear this
+  // section's own "Click to go forward" button — see that file's own
+  // comment, and GraphSectionElementary/GraphSection68's matching effects
+  // for why this is gated on isVisuallyActive too (not just the button's
+  // own render condition, currentStep !== STEPS.length - 1), rather than
+  // just the latter alone.
+  useEffect(() => {
+    const isForwardButtonShown = isVisuallyActive && !isMobile && currentStep !== STEPS.length - 1
+    window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'graph-912', active: isForwardButtonShown } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'graph-912', active: false } }))
+    }
+  }, [isVisuallyActive, isMobile, currentStep])
 
   useEffect(() => {
     if (hasEnteredSectionRef.current || !sectionRef.current) return
@@ -1012,12 +1051,17 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
     // Bring back real students dropped above purely for being thinly
     // connected (single weight-1 tie), anchored to their one real
     // connection — see rescueDroppedNodes comment above for why this is
-    // different from a floater.
+    // different from a floater. Grade 12 gets a slightly lower bar (3
+    // instead of 4) per feedback that it still read sparser than the
+    // other three grades even with this rescue pass already applied —
+    // see rescueDroppedNodes' own minTies comment for why this, not
+    // MIN_EDGE_WEIGHT, is the lever for that.
     const survivingIds = new Set(newNodes.map(n => n.id))
     const anyWeightPool: Edge[] = rawEdgesAnyWeight.filter(
       e => filteredNodeIds.has(e.source as number) && filteredNodeIds.has(e.target as number)
     )
-    const rescued = rescueDroppedNodes(allSampledPositioned, survivingIds, anyWeightPool)
+    const rescueMinTies = currentStep === 4 ? 3 : 4
+    const rescued = rescueDroppedNodes(allSampledPositioned, survivingIds, anyWeightPool, rescueMinTies)
     newNodes = [...newNodes, ...rescued.nodes]
     newEdges = [...newEdges, ...rescued.edges]
     }
@@ -1498,6 +1542,58 @@ export default function GraphSection912({ mode, resetSignal }: { mode: Mode; res
           }}
           style={{ flex: 1, minHeight: 0, height: isMobile ? undefined : '100%', position: 'relative', cursor: (isMobile || (currentStep === 0 && !dialogueDone)) ? 'pointer' : 'default' }}
         >
+          {/* Desktop-only "Click to go back"/"Click to go forward" —
+              replaces scroll-driven step navigation (see disableScrollNav
+              in the useGraphSection call above), matching
+              GraphSectionElementary/GraphSection68's own buttons exactly
+              (size, rounding, position, no cursor override for the
+              site's custom cursor SVG). Forward carries over the same
+              guard blockScrollForward used to provide against scroll —
+              grade 9's render is heavy enough (up to 3300ms) that
+              allowing a click straight through mid-render risked the
+              same "jumped ahead before it finished" issue scrolling used
+              to have, just via a different input method. */}
+          {!isMobile && currentStep > 0 && (
+            <motion.div
+              onClick={(e) => {
+                e.stopPropagation()
+                setCurrentStep(s => Math.max(0, s - 1))
+              }}
+              whileHover={{ scale: 1.05 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', left: '1rem', zIndex: 5,
+                fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              }}
+            >
+              ← Click to go back
+            </motion.div>
+          )}
+          {!isMobile && currentStep !== STEPS.length - 1 && (
+            <motion.div
+              onClick={(e) => {
+                e.stopPropagation()
+                if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
+                if (currentStep === 1 && Date.now() - stepEnteredAtRef.current < 3300) return
+                if (Date.now() - stepEnteredAtRef.current < 900) return
+                skipTyping()
+                setSkipTypingSignal(s => s + 1)
+                setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
+              }}
+              whileHover={{ scale: 1.05 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', right: '1rem', zIndex: 5,
+                fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              }}
+            >
+              Click to go forward →
+            </motion.div>
+          )}
           {isMobile && noticeText && (
             <div style={{ position: 'absolute', top: '2.2rem', left: '10%', right: '10%', zIndex: 5, padding: '0.6rem 1rem', backgroundColor: 'rgba(250,249,246,0.92)', borderRadius: '8px' }}>
               <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.6rem, 2.5vw, 0.75rem)', color: '#111', lineHeight: 1.5, margin: 0, textAlign: 'center' }}>
