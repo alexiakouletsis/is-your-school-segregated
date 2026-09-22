@@ -708,7 +708,18 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     linkLines.enter().append('line')
       .attr('stroke', d => getEdgeColor(d, mode)).attr('stroke-width', 1).attr('stroke-opacity', 0)
       .transition().duration(600).attr('stroke-opacity', 0.2)
-    linkLines.transition().duration(300).attr('stroke', d => getEdgeColor(d, mode))
+    linkLines.transition().duration(300)
+      .attr('stroke', d => getEdgeColor(d, mode))
+      // Also reasserts stroke-opacity 0.2 now, not just stroke color —
+      // same fix as GraphSection68/GraphSection912's identical bug: this
+      // selection (matched to displayEdges without a stable key) can
+      // catch lines still mid-transition from the enter branch's own
+      // 600ms fade-in if this effect re-runs shortly after its first
+      // run. Without this, an interrupted fade got frozen at whatever
+      // partial opacity it had reached instead of completing to the
+      // correct resting value — the "edges load up transparent until
+      // tapping into/out of a node" bug, on mobile specifically.
+      .attr('stroke-opacity', 0.2)
 
     const nonProtags = newNodes.filter(n => !isProtagonist(n.id, mode))
     const protags = newNodes.filter(n => isProtagonist(n.id, mode))
@@ -756,9 +767,25 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     nodeG.selectAll<SVGCircleElement, Node>('circle.regular-node').attr('opacity', 1)
     linkG.selectAll<SVGLineElement, Edge>('line').attr('stroke', d => getEdgeColor(d, mode)).attr('stroke-opacity', 0.2)
 
+    // Delayed safety-net reassertion, matching GraphSection68/
+    // GraphSection912's identical fix for the same underlying bug — per
+    // feedback this mobile edge-transparency issue affects this file's
+    // graphs too. Times to land just after the enter transition's own
+    // 600ms fade above would naturally finish. The synchronous
+    // reassertion two lines up is instant and risks interrupting/
+    // fighting that same fade if it runs in the same tick the enter
+    // transition is scheduled; this one runs later, once things should
+    // have already settled, so it's a pure correction rather than a
+    // potential source of the same interruption it's meant to fix.
+    const opacityFixTimer = setTimeout(() => {
+      if (!svgRef.current) return
+      applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current, currentStep === 0)
+    }, 700)
+
     return () => {
       simulation.stop()
       clearTimeout(zoomTimer)
+      clearTimeout(opacityFixTimer)
       tooltipRef.current?.style('opacity', 0)
     }
   }, [currentStep, deferredStep, k3GraphData, grade45Data, graphSize.width, graphSize.height, mode, isMobile])
