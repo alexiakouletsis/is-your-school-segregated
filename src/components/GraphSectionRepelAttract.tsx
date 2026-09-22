@@ -99,7 +99,13 @@ export default function GraphSectionRepelAttract({ mode, navBarVisible }: {
   const edgeOpacity = useMotionValue(0)
 
   const holdEndFrac = isMobile ? M_HOLD_END : D_HOLD_END
-  const dNodeTop = useTransform(scrollYProgress, [holdEndFrac * 0.6, holdEndFrac], ['70%', '50%'])
+  // Moved up (was 70% -> 50%) per feedback that these should sit closer
+  // to GraphExplainerIntro's "How do these graphs actually work?" title
+  // above — that file's own bigarrow was moved up by a matching amount
+  // to stay in line with these. Desktop only; mobile's own node position
+  // (mobileNodeTopMV below) is untouched, per feedback that mobile is
+  // fine as-is.
+  const dNodeTop = useTransform(scrollYProgress, [holdEndFrac * 0.6, holdEndFrac], ['58%', '50%'])
   // Mobile: starts a bit lower during the intro/hold phase (so it fits
   // comfortably within the initial viewport), then transitions to
   // vertically centered once the actual graph phase begins (showPanel),

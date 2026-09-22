@@ -1229,8 +1229,25 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
           // Matching the values here removes the mismatch regardless of
           // effect timing.
           .transition().duration(600).attr('stroke-opacity', 0.4),
+        // Also explicitly reasserts stroke-opacity 0.4 now, not just
+        // stroke color — this join has no key function (.data(newEdges)
+        // with no id accessor), so it matches existing <line> elements to
+        // new data by array index only. On mobile specifically, tapping
+        // past the dialogue fires setCurrentStep AND setSkipTypingSignal
+        // in the same handler, and grade 9's pre-warmed-cache path uses a
+        // much shorter zoom delay (300ms vs 2200ms cold) — if that
+        // combination causes this effect to re-run while the enter
+        // branch's 600ms fade above is still mid-transition, the second
+        // run matches those same lines as "update" (they already exist
+        // now) instead of "enter", and update previously left
+        // stroke-opacity completely untouched — freezing it at whatever
+        // partial value the interrupted fade had reached, which read as
+        // "edges more translucent than they should be" until an actual
+        // hover/tap forced applyHoverHighlight to reassert the correct
+        // value. Grade 10 doesn't hit this since it has no pre-warm
+        // fast-path to race against.
         update => update
-          .transition().duration(300).attr('stroke', d => getEdgeColor912(d, mode)),
+          .transition().duration(300).attr('stroke', d => getEdgeColor912(d, mode)).attr('stroke-opacity', 0.4),
         exit => exit.transition().duration(300).attr('stroke-opacity', 0).remove()
       )
 
@@ -1609,11 +1626,16 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
               as GraphSection68's dialogue. One extra line than 68's own
               three, so the vertical gaps below just continue the same
               per-line spacing one step further rather than compressing
-              to fit the same total range. */}
+              to fit the same total range. Desktop's left/right offsets
+              moved inward (19% -> 23%) per feedback that the right-side
+              (green/blue) bubbles' own right edge was getting overlapped
+              by the persistent SES/race toggle's left edge — moved both
+              sides in by the same amount for symmetry, mobile untouched
+              since it wasn't reported there. */}
           {currentStep === 0 && (
             <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
               {/* "I feel like I never see you anymore." — highest */}
-              <div style={{ position: 'absolute', left: isMobile ? '15%' : '19%', top: isMobile ? '13%' : '6%', maxWidth: isMobile ? '160px' : '240px' }}>
+              <div style={{ position: 'absolute', left: isMobile ? '15%' : '23%', top: isMobile ? '13%' : '6%', maxWidth: isMobile ? '160px' : '240px' }}>
                 {visibleBubbles[0] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -1627,7 +1649,7 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
                 )}
               </div>
               {/* "I know, it's like we don't even go to the same school." */}
-              <div style={{ position: 'absolute', right: isMobile ? '15%' : '19%', top: isMobile ? '21%' : '15%', maxWidth: isMobile ? '184px' : '255px' }}>
+              <div style={{ position: 'absolute', right: isMobile ? '15%' : '23%', top: isMobile ? '21%' : '15%', maxWidth: isMobile ? '184px' : '255px' }}>
                 {visibleBubbles[1] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -1641,7 +1663,7 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
                 )}
               </div>
               {/* "Yeah. Are you at least free after school?" */}
-              <div style={{ position: 'absolute', left: isMobile ? '15%' : '19%', top: isMobile ? '29%' : '24%', maxWidth: isMobile ? '160px' : '240px' }}>
+              <div style={{ position: 'absolute', left: isMobile ? '15%' : '23%', top: isMobile ? '29%' : '24%', maxWidth: isMobile ? '160px' : '240px' }}>
                 {visibleBubbles[2] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -1655,7 +1677,7 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
                 )}
               </div>
               {/* "Sorry, I'm too busy." — lowest */}
-              <div style={{ position: 'absolute', right: isMobile ? '15%' : '19%', top: isMobile ? '37%' : '33%', maxWidth: isMobile ? '172px' : '240px' }}>
+              <div style={{ position: 'absolute', right: isMobile ? '15%' : '23%', top: isMobile ? '37%' : '33%', maxWidth: isMobile ? '172px' : '240px' }}>
                 {visibleBubbles[3] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}

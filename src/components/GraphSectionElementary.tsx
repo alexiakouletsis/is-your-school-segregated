@@ -650,8 +650,13 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     // on the neighbors' INITIAL scattered positions rather than waiting
     // for physics to settle first, so there needs to be enough slack for
     // them to still visibly move into their final spots without drifting
-    // outside the already-fixed frame.
-    const padding = isGrade45 ? (isMobile ? 30 : 80) : (isSmall ? (isMobile ? 60 : 150) : (currentStep === 0 ? (isMobile ? 20 : 55) : (isMobile ? 30 : 80)))
+    // outside the already-fixed frame. Mobile's own step-0 padding
+    // dropped further still (20 -> 8) per feedback that the class read as
+    // too zoomed out there specifically — less reserved border space
+    // means a tighter fit, so the two protagonists (and their real
+    // classmates) render bigger/more in line with the dialogue above
+    // them, matching desktop's own scale better.
+    const padding = isGrade45 ? (isMobile ? 30 : 80) : (isSmall ? (isMobile ? 60 : 150) : (currentStep === 0 ? (isMobile ? 8 : 55) : (isMobile ? 30 : 80)))
     // Reordered per feedback: this used to wait 1400ms, measuring the
     // bounding box AFTER physics had already settled the neighbors into
     // place — meaning nodes visibly moved first (at whatever default,

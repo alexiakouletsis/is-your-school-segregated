@@ -739,7 +739,16 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     simulationRef.current = simulation
 
     const padding = isSmall ? (isMobile ? 60 : 150) : (isMobile ? 30 : 80)
-    const zoomTimer = autoZoom(g, width, height, padding, currentStep === 2 ? 1600 : 800)
+    // Grade 6 (currentStep === 2) used to get a longer 1600ms delay here
+    // specifically, so the zoom-to-fit bbox measurement happened after
+    // the simulation had mostly settled — giving a tighter final fit, but
+    // meaning the user watched nodes settle at the OLD (pause step's)
+    // zoom level and only saw the zoom-out jump at the very end. Per
+    // feedback, using the same 800ms as everything else lets the zoom
+    // trigger while nodes are still scattered/early in their settling,
+    // so the zoom-out happens first and the user can actually watch them
+    // move into place at the new, already-zoomed-out view instead.
+    const zoomTimer = autoZoom(g, width, height, padding, 800)
 
     simulation.on('tick', () => {
       linkG.selectAll<SVGLineElement, Edge>('line')
@@ -762,6 +771,16 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
       .transition().duration(600).attr('stroke-opacity', 0.2)
     linkLines.transition().duration(300)
       .attr('stroke', d => getEdgeColor(d, mode))
+      // Also reasserts stroke-opacity 0.2 now, not just stroke color — see
+      // GraphSection912's identical fix/comment for the full mechanism:
+      // this selection (matched to newEdges without a stable key, same as
+      // there) can catch lines still mid-transition from the enter
+      // branch's own 600ms fade-in if this effect re-runs shortly after
+      // its first run (plausible here too, on mobile, for the same
+      // dialogue-to-real-data step transition). Without this, an
+      // interrupted fade got frozen at whatever partial opacity it had
+      // reached instead of completing to the correct resting value.
+      .attr('stroke-opacity', 0.2)
 
     // Non-alt steps use the original shared graphUtils protagonist helpers.
     const nonProtags = newNodes.filter(n => !isProtagonist(n.id, mode))
@@ -801,9 +820,32 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     // dim toward or show stats about.
     if (currentStep > 1) setupNodeInteractions(nodeG, simulation, mode)
 
+    // Safety-net reassertion of the correct resting edge opacity, timed
+    // to land just after the enter transitions above would naturally
+    // finish (600ms). Per feedback, the "update transition also sets
+    // stroke-opacity" fix wasn't fully resolving the mobile pause-phase
+    // -> grade 6 transparency glitch — this is a broader, more robust
+    // version of the same idea: rather than chasing the exact spot a
+    // transition gets interrupted (there could be more than one,
+    // especially with an async data-load gap in between — see the
+    // "glimpse of the two dialogue nodes" symptom, which is a separate,
+    // likely-harmless side effect of the same gap: currentStep flips to
+    // 2 and the SVG's own opacity toggle un-hides it immediately, but
+    // this effect bails out early via the allGraphData guard above until
+    // the real fetch resolves, so whatever was already drawn — the
+    // dummy dialogue nodes, with no edges — is what briefly shows), this
+    // just definitively re-applies the correct value once, after
+    // everything should have settled, regardless of how many render
+    // passes happened or where exactly one got cut off.
+    const opacityFixTimer = setTimeout(() => {
+      if (!svgRef.current) return
+      applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current)
+    }, 700)
+
     return () => {
       simulation.stop()
       clearTimeout(zoomTimer)
+      clearTimeout(opacityFixTimer)
       tooltipRef.current?.style('opacity', 0)
     }
   }, [currentStep, deferredStep, allGraphData, graphSize, mode, isMobile])
@@ -1196,6 +1238,45 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
                 <span style={{ color: 'var(--color-race-1)' }}>Ra</span><span style={{ color: 'var(--color-race-2)' }}>ce</span>{RACE_INTRO_PARA2_MID}<span style={{ color: 'var(--color-high-ses)' }}>socioecono</span><span style={{ color: 'var(--color-low-ses)' }}>mic status</span>{RACE_INTRO_PARA2_AFTER}
               </p>
             </motion.div>
+          )}
+
+          {/* Decorative spark to the left of the persistent SES/race
+              toggle (position:fixed in App.tsx, top-right of the whole
+              viewport) — only during this pause phase, drawing attention
+              to the toggle right as it's introduced. Desktop's top now
+              also responds to navBarVisible (already threaded into this
+              component as a prop for its own back/forward buttons),
+              bumping down further to stay aligned with the toggle's own
+              navBarVisible-driven bump, same as its forward-button-driven
+              bump below that. This still isn't a full duplicate of
+              App.tsx's stacking system (e.g. it doesn't independently
+              track forwardButtonVisible, since THIS phase's own forward
+              button is always visible, making that half of the toggle's
+              stacking a constant here rather than something to branch
+              on) — just the one additional axis that actually varies
+              while this phase is showing. key={currentStep} forces a
+              clean remount every time this phase is (re-)entered — per
+              earlier feedback that spark stopped appearing on a return
+              visit; even though the render condition itself is a plain
+              currentStep===1 check with no "seen before" gating, forcing
+              a fresh mount rules out any possible stale animation/mount
+              state as the cause. */}
+          {currentStep === 1 && (
+            <motion.img
+              key={currentStep}
+              src="/assets/spark.svg"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, ease: 'easeInOut', delay: 0.3 }}
+              style={{
+                position: 'fixed',
+                top: isMobile ? '1.2rem' : (navBarVisible ? '9.35rem' : '5.65rem'),
+                right: isMobile ? '13rem' : '19rem',
+                height: isMobile ? '2.6rem' : '4rem',
+                width: 'auto',
+                zIndex: 9000,
+                pointerEvents: 'none',
+                transition: 'top 0.4s ease',
+              }}
+            />
           )}
 
           {/* comic strip dialogue bubbles — alternating heights matching

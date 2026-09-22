@@ -24,7 +24,10 @@ export default function GraphExplainerIntro() {
   // means its content already engages around v≈0.15, fading out over
   // [0.05, 0.18] gets it gone right around when that content is taking
   // over, instead of hanging around for the rest of this section's scroll.
-  const bigArrowOpacity = useTransform(scrollYProgress, [0.05, 0.18], [1, 0])
+  // Per feedback it was STILL fading a bit too early — pushed the whole
+  // window later, [0.12, 0.27], so it holds on screen a little longer
+  // before clearing out.
+  const bigArrowOpacity = useTransform(scrollYProgress, [0.12, 0.27], [1, 0])
 
   return (
     <div ref={containerRef} style={{
@@ -43,11 +46,16 @@ export default function GraphExplainerIntro() {
       {/* Restored from its old spot in ArticleSection.tsx (removed
           earlier per feedback) — same asset, same size/formatting,
           desktop only, just repositioned to this screen's bottom-left
-          corner instead of relative to the old intro paragraph block. */}
+          corner instead of relative to the old intro paragraph block.
+          Moved up (bottom: 5rem -> 11rem) to stay in line with
+          RepelAttract's own two starting nodes, which were moved up by a
+          roughly equivalent amount (their own 70%/50% top values shifted
+          to 58%/38% — see that file's own comment) per feedback that
+          both should sit closer to the title above. */}
       {!isMobile && (
         <motion.img src="/assets/bigarrow.svg" className="subtle-stop-motion" style={{
           position: 'absolute',
-          bottom: '5rem',
+          bottom: '11rem',
           left: '14.5rem',
           width: 'clamp(15.5rem, 26vw, 26rem)',
           height: 'auto',
