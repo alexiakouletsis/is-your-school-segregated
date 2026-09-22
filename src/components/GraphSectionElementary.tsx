@@ -159,6 +159,11 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
   const [visibleBubbles, setVisibleBubbles] = useState<boolean[]>([false, false, false])
   const [bubbleTexts, setBubbleTexts] = useState<string[]>(['', '', ''])
   const [dialogueDone, setDialogueDone] = useState(false)
+  // Hover state for the "Or go back/forward using the arrow keys" hints
+  // on the two desktop nav buttons — same convention as App.tsx's own
+  // 'R' key hint on the persistent toggle, just smaller.
+  const [backHovered, setBackHovered] = useState(false)
+  const [forwardHovered, setForwardHovered] = useState(false)
   const dialogueTimers = useRef<ReturnType<typeof setTimeout>[]>([])
   const hasPlayedDialogue = useRef(false)
 
@@ -281,6 +286,25 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
       window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'elementary', active: false } }))
     }
   }, [isVisuallyActive, isMobile, currentStep])
+
+  // Left/right arrow keys mirror the "Click to go back"/"Click to go
+  // forward" buttons exactly — same conditions (currentStep bounds,
+  // dialogue-skip-then-advance on step 0), same guard against acting
+  // while the user is elsewhere on the page (isVisuallyActive), desktop
+  // only (mobile has no keyboard to speak of).
+  useEffect(() => {
+    if (isMobile || !isVisuallyActive) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        if (currentStep > 0) setCurrentStep(prev => Math.max(0, prev - 1))
+      } else if (e.key === 'ArrowRight') {
+        if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
+        if (currentStep !== STEPS.length - 1) setCurrentStep(prev => Math.min(STEPS.length - 1, prev + 1))
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isMobile, isVisuallyActive, currentStep, dialogueDone])
 
   const [noticeText, setNoticeText] = useState('')
   const noticeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -538,13 +562,30 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
         // entirely; y stays free so they still settle naturally with the
         // group vertically. No entrance animation — nodes are simply at
         // their resting position from frame one.
+        // Fixed, deterministic y (cy) now too, not existing's — same
+        // reasoning as the neighbor-node fix below: the zoom-fit bbox
+        // depends on EVERY node's starting position, and these two are
+        // no exception just because their x is already pinned.
         if (n.id === PROTAGONIST_HIGH) {
-          return { ...(existing ?? n), x: cx - 25, y: existing?.y ?? cy, fx: cx - 25, fy: null }
+          return { ...(existing ?? n), x: cx - 25, y: cy, fx: cx - 25, fy: null }
         }
         if (n.id === protagonistLow) {
-          return { ...(existing ?? n), x: cx + 25, y: existing?.y ?? cy, fx: cx + 25, fy: null }
+          return { ...(existing ?? n), x: cx + 25, y: cy, fx: cx + 25, fy: null }
         }
-        return existing ? { ...existing, fx: null, fy: null } : { ...n, x: cx + (Math.random() - 0.5) * 90, y: cy + (Math.random() - 0.5) * 90 }
+        // Always a fresh tight scatter here, not existing's (possibly
+        // much wider, settled) position — the zoom-fit below measures
+        // this bbox INSTANTLY (0ms, no animation), so whatever spread
+        // these start at directly determines the zoom level. Reusing a
+        // revisit's settled positions (which the charge force had
+        // pushed apart from their ORIGINAL tight scatter over the
+        // previous visit's duration) gave a much wider bbox than a first
+        // visit's fresh scatter would, and that mismatch showed up
+        // directly as an inconsistent, too-zoomed-out revisit. A fresh
+        // scatter every time keeps the zoom-fit consistent regardless of
+        // visit history — the instant-zoom fix above already prevents
+        // the "chaotic dual motion" this used to cause on its own, so
+        // this doesn't need `existing` to avoid that anymore.
+        return { ...n, x: cx + (Math.random() - 0.5) * 90, y: cy + (Math.random() - 0.5) * 90 }
       })
       newEdges = gradeData.edges.filter(e => {
         const src = typeof e.source === 'number' ? e.source : (e.source as Node).id
@@ -650,13 +691,15 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     // on the neighbors' INITIAL scattered positions rather than waiting
     // for physics to settle first, so there needs to be enough slack for
     // them to still visibly move into their final spots without drifting
-    // outside the already-fixed frame. Mobile's own step-0 padding
-    // dropped further still (20 -> 8) per feedback that the class read as
-    // too zoomed out there specifically — less reserved border space
-    // means a tighter fit, so the two protagonists (and their real
-    // classmates) render bigger/more in line with the dialogue above
-    // them, matching desktop's own scale better.
-    const padding = isGrade45 ? (isMobile ? 30 : 80) : (isSmall ? (isMobile ? 60 : 150) : (currentStep === 0 ? (isMobile ? 8 : 55) : (isMobile ? 30 : 80)))
+    // outside the already-fixed frame. Mobile's own step-0 padding went
+    // 20 -> 8 -> 18: the switch to computing the zoom bbox directly from
+    // newNodes' own positions (fixing a separate revisit-zoom bug) made
+    // the measurement itself tighter/more accurate than the old
+    // DOM-based getBBox() ever was, and combined with the already-tight
+    // 8 that read as too zoomed in — bumped padding back up a bit to
+    // compensate for that more accurate measurement, landing between the
+    // two previous values instead of matching the older 20 exactly.
+    const padding = isGrade45 ? (isMobile ? 30 : 80) : (isSmall ? (isMobile ? 60 : 150) : (currentStep === 0 ? (isMobile ? 48 : 68) : (isMobile ? 30 : 80)))
     // Reordered per feedback: this used to wait 1400ms, measuring the
     // bounding box AFTER physics had already settled the neighbors into
     // place — meaning nodes visibly moved first (at whatever default,
@@ -682,11 +725,40 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
             const panel = graphPanelRef.current
             const fitWidth = panel?.clientWidth || width
             const fitHeight = panel?.clientHeight || height
-            const bounds = (g.node() as SVGGElement).getBBox()
-            if (bounds.width === 0) return
+            // Computed directly from newNodes' own known x/y (all fully
+            // deterministic now — see the position-assignment comments
+            // above), not (g.node() as SVGGElement).getBBox() — that
+            // measures whatever's CURRENTLY RENDERED in the DOM, which
+            // can still include the PREVIOUS step's own elements: their
+            // exit transition takes 300ms to actually .remove() them,
+            // but this zoom timer fires almost immediately (0ms), so
+            // getBBox() was very likely capturing a mix of the outgoing
+            // step's (wider) content plus this step's own — inflating
+            // the measured bbox and producing a more-zoomed-out fit than
+            // this step's own content actually needs. That fits exactly
+            // "returning from all grade K to single class K isn't
+            // zoomed in enough" — going from a wider step back to this
+            // narrower one is precisely when leftover wide content would
+            // most affect the result.
+            const xs = newNodes.map(n => n.x ?? cx)
+            const ys = newNodes.map(n => n.y ?? cy)
+            const minX = Math.min(...xs), maxX = Math.max(...xs)
+            const minY = Math.min(...ys), maxY = Math.max(...ys)
+            const bounds = { width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) }
             const scale = Math.min((fitWidth - padding * 2) / bounds.width, (fitHeight - padding * 2) / bounds.height)
+            // Translation centers on the panel's own true center (cx/cy),
+            // not the data's bounding-box center (which isn't
+            // necessarily symmetric around cx/cy, and made this look
+            // off-center when tried).
             const tx = fitWidth / 2 - cx * scale
-            const ty = fitHeight / 2 - cy * scale
+            // Small upward correction, desktop only — even centered on
+            // cy, per feedback the class still visually settles low
+            // within the frame. Likely the simulation (y isn't pinned
+            // for any node, only x for the protagonists) drifting the
+            // visual centroid down from cy as it settles after this
+            // one-time snap, which a pure center-on-cy snap can't
+            // account for on its own. Estimate, not a measurement.
+            const ty = fitHeight / 2 - cy * scale - (isMobile ? 0 : 30)
             d3.select(svgRef.current).call(zoomRef.current.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
           } catch (_) {}
         }, 0)
@@ -705,21 +777,30 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
 
     const linkLines = linkG.selectAll<SVGLineElement, Edge>('line').data(displayEdges)
     linkLines.exit().transition().duration(300).attr('stroke-opacity', 0).remove()
+    // The resting opacity here (and at the other two spots below) was
+    // 0.2, which is what this file's own rendering code always intended
+    // — but applyHoverHighlight's shared "no hover" branch hardcodes 0.4
+    // unconditionally, with no way to pass this file's own intended
+    // value in. Since hoveredNode changing (any tap, including tapping a
+    // node OFF again) calls applyHoverHighlight, edges rendered correctly
+    // at 0.2 initially but then got overwritten to 0.4 by the very next
+    // hover-state change — exactly "opacity only comes up after tapping
+    // a node." Changed to 0.4 everywhere in this file instead, so both
+    // paths agree on the same resting value and neither can override the
+    // other into a mismatched state.
     linkLines.enter().append('line')
-      .attr('stroke', d => getEdgeColor(d, mode)).attr('stroke-width', 1).attr('stroke-opacity', 0)
-      .transition().duration(600).attr('stroke-opacity', 0.2)
+      .attr('x1', d => (d.source as Node).x ?? 0).attr('y1', d => (d.source as Node).y ?? 0)
+      .attr('x2', d => (d.target as Node).x ?? 0).attr('y2', d => (d.target as Node).y ?? 0)
+      .attr('stroke', d => getEdgeColor(d, mode)).attr('stroke-width', 1).attr('stroke-opacity', 0.4)
     linkLines.transition().duration(300)
       .attr('stroke', d => getEdgeColor(d, mode))
-      // Also reasserts stroke-opacity 0.2 now, not just stroke color —
-      // same fix as GraphSection68/GraphSection912's identical bug: this
+      // Also reasserts stroke-opacity here, not just stroke color — this
       // selection (matched to displayEdges without a stable key) can
-      // catch lines still mid-transition from the enter branch's own
-      // 600ms fade-in if this effect re-runs shortly after its first
-      // run. Without this, an interrupted fade got frozen at whatever
-      // partial opacity it had reached instead of completing to the
-      // correct resting value — the "edges load up transparent until
-      // tapping into/out of a node" bug, on mobile specifically.
-      .attr('stroke-opacity', 0.2)
+      // catch lines still mid-transition from a previous run if this
+      // effect re-runs shortly after. Without this, an interrupted
+      // transition got frozen at whatever partial opacity it had reached
+      // instead of completing to the correct resting value.
+      .attr('stroke-opacity', 0.4)
 
     const nonProtags = newNodes.filter(n => !isProtagonist(n.id, mode))
     const protags = newNodes.filter(n => isProtagonist(n.id, mode))
@@ -765,27 +846,11 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     if (currentStep !== 0) setupNodeInteractions(nodeG, simulation, mode)
 
     nodeG.selectAll<SVGCircleElement, Node>('circle.regular-node').attr('opacity', 1)
-    linkG.selectAll<SVGLineElement, Edge>('line').attr('stroke', d => getEdgeColor(d, mode)).attr('stroke-opacity', 0.2)
-
-    // Delayed safety-net reassertion, matching GraphSection68/
-    // GraphSection912's identical fix for the same underlying bug — per
-    // feedback this mobile edge-transparency issue affects this file's
-    // graphs too. Times to land just after the enter transition's own
-    // 600ms fade above would naturally finish. The synchronous
-    // reassertion two lines up is instant and risks interrupting/
-    // fighting that same fade if it runs in the same tick the enter
-    // transition is scheduled; this one runs later, once things should
-    // have already settled, so it's a pure correction rather than a
-    // potential source of the same interruption it's meant to fix.
-    const opacityFixTimer = setTimeout(() => {
-      if (!svgRef.current) return
-      applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current, currentStep === 0)
-    }, 700)
+    linkG.selectAll<SVGLineElement, Edge>('line').attr('stroke', d => getEdgeColor(d, mode)).attr('stroke-opacity', 0.4)
 
     return () => {
       simulation.stop()
       clearTimeout(zoomTimer)
-      clearTimeout(opacityFixTimer)
       tooltipRef.current?.style('opacity', 0)
     }
   }, [currentStep, deferredStep, k3GraphData, grade45Data, graphSize.width, graphSize.height, mode, isMobile])
@@ -994,6 +1059,8 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
                 e.stopPropagation()
                 setCurrentStep(prev => Math.max(0, prev - 1))
               }}
+              onMouseEnter={() => setBackHovered(true)}
+              onMouseLeave={() => setBackHovered(false)}
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
@@ -1004,6 +1071,16 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               }}
             >
               ← Click to go back
+              {backHovered && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                  marginTop: '0.45rem', backgroundColor: '#111', color: '#fff',
+                  padding: '0.32rem 0.65rem', borderRadius: '6px', fontSize: '0.68rem',
+                  whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 9500,
+                }}>
+                  Or use the left arrow key
+                </div>
+              )}
             </motion.div>
           )}
           {/* Desktop-only "Click to go forward" — see the matching "Click
@@ -1021,6 +1098,8 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
                 if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
                 setCurrentStep(prev => Math.min(STEPS.length - 1, prev + 1))
               }}
+              onMouseEnter={() => setForwardHovered(true)}
+              onMouseLeave={() => setForwardHovered(false)}
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
@@ -1031,6 +1110,16 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               }}
             >
               Click to go forward →
+              {forwardHovered && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                  marginTop: '0.45rem', backgroundColor: '#111', color: '#fff',
+                  padding: '0.32rem 0.65rem', borderRadius: '6px', fontSize: '0.68rem',
+                  whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 9500,
+                }}>
+                  Or use the right arrow key
+                </div>
+              )}
             </motion.div>
           )}
           {isMobile && !isTextStep && noticeText && (

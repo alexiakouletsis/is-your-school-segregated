@@ -146,6 +146,11 @@ export default function GraphSectionRepelAttract({ mode, navBarVisible }: {
     }
   }, [isVisuallyActive])
   const [phase, setPhase] = useState<'repel' | 'attract'>('repel')
+  // Hover state for the "Or go back/forward using the arrow keys" hints
+  // on the two desktop nav buttons — same convention as App.tsx's own
+  // 'R' key hint on the persistent toggle, just smaller.
+  const [backHovered, setBackHovered] = useState(false)
+  const [forwardHovered, setForwardHovered] = useState(false)
 
   // Tells App.tsx's persistent toggle to bump down and clear this
   // section's own "Click to go forward" button — see that file's own
@@ -160,6 +165,24 @@ export default function GraphSectionRepelAttract({ mode, navBarVisible }: {
       window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'repel-attract', active: false } }))
     }
   }, [isVisuallyActive, isMobile, showPanel, phase])
+
+  // Left/right arrow keys mirror the "Click to go back"/"Click to go
+  // forward" buttons exactly — left triggers repel (back, from attract),
+  // right triggers attract (forward, from repel), same guard against
+  // acting while the user is elsewhere on the page (isVisuallyActive),
+  // desktop only.
+  useEffect(() => {
+    if (isMobile || !isVisuallyActive || !showPanel) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        if (phase === 'attract') triggerRepel()
+      } else if (e.key === 'ArrowRight') {
+        if (phase === 'repel') triggerAttract()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isMobile, isVisuallyActive, showPanel, phase])
 
   // Repel's own label now fades in (matching the other graph sections'
   // step-label convention) instead of typing character-by-character —
@@ -425,6 +448,8 @@ export default function GraphSectionRepelAttract({ mode, navBarVisible }: {
           {!isMobile && showPanel && phase === 'attract' && (
             <motion.div
               onClick={(e) => { e.stopPropagation(); triggerRepel() }}
+              onMouseEnter={() => setBackHovered(true)}
+              onMouseLeave={() => setBackHovered(false)}
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
@@ -435,11 +460,23 @@ export default function GraphSectionRepelAttract({ mode, navBarVisible }: {
               }}
             >
               ← Click to go back
+              {backHovered && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                  marginTop: '0.45rem', backgroundColor: '#111', color: '#fff',
+                  padding: '0.32rem 0.65rem', borderRadius: '6px', fontSize: '0.68rem',
+                  whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 9500,
+                }}>
+                  Or use the left arrow key
+                </div>
+              )}
             </motion.div>
           )}
           {!isMobile && showPanel && phase === 'repel' && (
             <motion.div
               onClick={(e) => { e.stopPropagation(); triggerAttract() }}
+              onMouseEnter={() => setForwardHovered(true)}
+              onMouseLeave={() => setForwardHovered(false)}
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
@@ -450,6 +487,16 @@ export default function GraphSectionRepelAttract({ mode, navBarVisible }: {
               }}
             >
               Click to go forward →
+              {forwardHovered && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                  marginTop: '0.45rem', backgroundColor: '#111', color: '#fff',
+                  padding: '0.32rem 0.65rem', borderRadius: '6px', fontSize: '0.68rem',
+                  whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 9500,
+                }}>
+                  Or use the right arrow key
+                </div>
+              )}
             </motion.div>
           )}
 

@@ -611,6 +611,31 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
     }
   }, [isVisuallyActive, isMobile, currentStep])
 
+  // Left/right arrow keys mirror the "Click to go back"/"Click to go
+  // forward" buttons exactly — same conditions, same heavy-render timing
+  // guard forward carries (grade 9's render is heavy enough that a click
+  // straight through mid-render risked the same issue scrolling used to
+  // have), same guard against acting while the user is elsewhere on the
+  // page (isVisuallyActive), desktop only.
+  useEffect(() => {
+    if (isMobile || !isVisuallyActive) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        if (currentStep > 0) setCurrentStep(s => Math.max(0, s - 1))
+      } else if (e.key === 'ArrowRight') {
+        if (currentStep === STEPS.length - 1) return
+        if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
+        if (currentStep === 1 && Date.now() - stepEnteredAtRef.current < 3300) return
+        if (Date.now() - stepEnteredAtRef.current < 900) return
+        skipTyping()
+        setSkipTypingSignal(s => s + 1)
+        setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isMobile, isVisuallyActive, currentStep, dialogueDone])
+
   useEffect(() => {
     if (hasEnteredSectionRef.current || !sectionRef.current) return
     const markEntered = () => {

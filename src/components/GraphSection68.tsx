@@ -340,6 +340,27 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     }
   }, [isVisuallyActive, isMobile, currentStep])
 
+  // Left/right arrow keys mirror the "Click to go back"/"Click to go
+  // forward" buttons exactly — same conditions and typing-skip behavior,
+  // same guard against acting while the user is elsewhere on the page
+  // (isVisuallyActive), desktop only.
+  useEffect(() => {
+    if (isMobile || !isVisuallyActive) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        if (currentStep > 0) setCurrentStep(s => Math.max(0, s - 1))
+      } else if (e.key === 'ArrowRight') {
+        if (currentStep === STEPS.length - 1) return
+        if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
+        skipTyping()
+        if (currentStep >= 1) setSkipTypingSignal(s => s + 1)
+        setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isMobile, isVisuallyActive, currentStep, dialogueDone])
+
   // Only bumped by Conclusion's bottom-of-page toggle (a deliberate full
   // restart), never by a plain mode change — see the comment on
   // graphResetSignal in App.tsx.
