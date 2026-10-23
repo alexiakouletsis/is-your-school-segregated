@@ -29,9 +29,14 @@ interface Props {
   skipSignal?: number
   mode: Mode
   isActiveScreen?: boolean
+  // See CourseClusterSection's own identical prop for the full
+  // reasoning — keeps lastExitWasForwardRef correct even when screen
+  // advances past this section via a NavBar jump rather than this
+  // component's own forward/back buttons.
+  passedForward?: boolean
 }
 
-export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverlaySettled, skipSignal, mode, isActiveScreen }: Props) {
+export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverlaySettled, skipSignal, mode, isActiveScreen, passedForward }: Props) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   const [settled, setSettled] = useState(false)
@@ -126,6 +131,7 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverla
   // CourseClusterSection, forward to GraphSection912), so this can no
   // longer just always exit/enter from the right.
   const lastExitWasForwardRef = useRef(false)
+  lastExitWasForwardRef.current = passedForward ?? lastExitWasForwardRef.current
   const goBack = () => {
     lastExitWasForwardRef.current = false
     window.dispatchEvent(new CustomEvent('exitSection03Part2ToCourseCluster'))

@@ -441,6 +441,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
       window.scrollTo({ top: target, behavior: 'auto' })
     }
     resetContent()
+    setConclusionPart(0)
     lastExitWasForwardRef.current = false
     window.dispatchEvent(new CustomEvent('exitConclusionToGraph912'))
   }

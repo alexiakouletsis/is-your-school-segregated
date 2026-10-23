@@ -226,8 +226,8 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     endBufferMs: 1400,
     // Desktop step navigation moved to explicit forward/back buttons (see
     // their render further down) instead of scroll — mobile is unaffected
-    // either way, since it already only navigates via tap. Only this
-    // section for now; GraphSection68/912 keep scroll-driven stepping.
+    // either way, since it already only navigates via tap. GraphSection68
+    // and GraphSection912 have since been converted the same way.
     //
     // Was passed as disableScrollNav before, a name the hook never
     // actually defined or used — silently ignored the whole time, which

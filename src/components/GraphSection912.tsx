@@ -394,7 +394,7 @@ function rescueDroppedNodes(
   return { nodes: rescuedNodes, edges: rescuedEdges }
 }
 
-export default function GraphSection912({ mode, resetSignal, isActiveScreen }: { mode: Mode; resetSignal?: number; isActiveScreen?: boolean }) {
+export default function GraphSection912({ mode, resetSignal, isActiveScreen, passedForward }: { mode: Mode; resetSignal?: number; isActiveScreen?: boolean; passedForward?: boolean }) {
   // [9th, 10th, 11th, 12th] — converted from the real GML course-sharing
   // data via scripts/convert_gml_to_json.py, dropped into public/data/graphs/
   // alongside the existing per-grade files.
@@ -710,6 +710,7 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen }: {
   // those bounds it just moves currentStep, same as the click handlers
   // elsewhere in this file.
   const lastExitWasForwardRef = useRef(false)
+  lastExitWasForwardRef.current = passedForward ?? lastExitWasForwardRef.current
   const goBack = () => {
     if (currentStep > 0) { setCurrentStep(s => Math.max(0, s - 1)); return }
     lastExitWasForwardRef.current = false
@@ -742,8 +743,8 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen }: {
       setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
       return
     }
-    // Placeholder — intentionally left doing nothing until the
-    // Conclusion transition is built.
+    // Last step (grade 12) forward — transitions into Conclusion, which
+    // plays its own converge/explode entry animation.
     lastExitWasForwardRef.current = true
     window.dispatchEvent(new CustomEvent('enterConclusionFromGraph912'))
   }

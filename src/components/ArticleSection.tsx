@@ -166,6 +166,21 @@ export default function ArticleSection({
   // list expected).
   const hasPassedScreen = (s: Screen): boolean => SCREEN_ORDER[screen as Screen] > SCREEN_ORDER[s]
 
+  // Per-section remount counters — bumping a section's own entry here
+  // forces React to fully unmount+remount it (via the key prop each is
+  // given below), wiping every piece of its internal state back to
+  // initial values in one guaranteed step. Used specifically for a
+  // NavBar jump landing BEFORE a section: that section (and everything
+  // else ahead of the jump target) should look completely untouched,
+  // not just visually repositioned — resetting dozens of individual
+  // state pieces (dialogue progress, wall/converge state, typing,
+  // render caches) by hand across many files would be far more
+  // error-prone than just remounting outright.
+  const [sectionResetKeys, setSectionResetKeys] = useState<Record<Screen, number>>({
+    section01: 0, elementary: 0, explainer: 0, 'repel-attract': 0, section02: 0,
+    graph68: 0, section03intro: 0, coursecluster: 0, section03part2: 0, graph912: 0, conclusion: 0,
+  })
+
   // NavBar jump — App.tsx's skipAnimationsUpTo dispatches this with the
   // screen value matching whichever of NavBar's three targets the user
   // clicked. Setting screen directly here is what makes every earlier
@@ -191,6 +206,13 @@ export default function ArticleSection({
       overlaySlideProgress.set(targetOrder > SCREEN_ORDER['repel-attract'] ? 1 : 0)
       waveProgress.set(targetOrder > SCREEN_ORDER.section02 ? 1 : 0)
       setScreen(target as Screen)
+      setSectionResetKeys(prev => {
+        const next = { ...prev }
+        ;(Object.keys(SCREEN_ORDER) as Screen[]).forEach(s => {
+          if (SCREEN_ORDER[s] > targetOrder) next[s] = prev[s] + 1
+        })
+        return next
+      })
       const entry = NAV_TARGET_ELEMENT[target]
       if (entry) {
         const el = document.getElementById(entry.id)
@@ -820,7 +842,7 @@ export default function ArticleSection({
           School" title/intro text block comes back later. */}
       {/* <Section01Part2 mode={mode} /> */}
 
-      <GraphSectionElementary mode={mode} resetSignal={graphResetSignal} onExited={onElementaryExited} isActiveScreen={screen === 'elementary'} />
+      <GraphSectionElementary key={`elementary-${sectionResetKeys.elementary}`} mode={mode} resetSignal={graphResetSignal} onExited={onElementaryExited} isActiveScreen={screen === 'elementary'} />
 
       {/* Simple title-only breather, then back into GraphSectionRepelAttract. */}
       <GraphExplainerIntro
@@ -830,6 +852,7 @@ export default function ArticleSection({
         isActiveScreen={screen === 'explainer'}
       />
       <GraphSectionRepelAttract
+        key={`repel-attract-${sectionResetKeys['repel-attract']}`}
         mode={mode}
         isActive={screen === 'repel-attract'}
         hasPassed={hasPassedScreen('repel-attract')}
@@ -846,19 +869,22 @@ export default function ArticleSection({
           isActive={screen === 'section02'}
         />
       </div>
-      <GraphSection68 mode={mode} resetSignal={graphResetSignal} onRaceIntroReached={onRaceIntroReached} navBarVisible={navBarVisible} onExited={onGraph68Exited} isActiveScreen={screen === 'graph68'} />
-      <Section03Intro mode={mode} skipSignal={skipSection03IntroSignal} isActiveScreen={screen === 'section03intro'} />
-      <CourseClusterSection mode={mode} isActiveScreen={screen === 'coursecluster'} />
+      <GraphSection68 key={`graph68-${sectionResetKeys.graph68}`} mode={mode} resetSignal={graphResetSignal} onRaceIntroReached={onRaceIntroReached} navBarVisible={navBarVisible} onExited={onGraph68Exited} isActiveScreen={screen === 'graph68'} />
+      <Section03Intro key={`section03intro-${sectionResetKeys.section03intro}`} mode={mode} skipSignal={skipSection03IntroSignal} isActiveScreen={screen === 'section03intro'} passedForward={hasPassedScreen('section03intro')} />
+      <CourseClusterSection key={`coursecluster-${sectionResetKeys.coursecluster}`} mode={mode} isActiveScreen={screen === 'coursecluster'} passedForward={hasPassedScreen('coursecluster')} />
       <Section03Part2
+        key={`section03part2-${sectionResetKeys.section03part2}`}
         onAnimDone={onSection03Part2AnimDone}
         onOverlaySettled={onSection03Part2OverlaySettled}
         onAnimReset={onSection03Part2AnimReset}
         skipSignal={skipSection03Part2Signal}
         mode={mode}
         isActiveScreen={screen === 'section03part2'}
+        passedForward={hasPassedScreen('section03part2')}
       />
-      <GraphSection912 mode={mode} resetSignal={graphResetSignal} isActiveScreen={screen === 'graph912'} />
+      <GraphSection912 key={`graph912-${sectionResetKeys.graph912}`} mode={mode} resetSignal={graphResetSignal} isActiveScreen={screen === 'graph912'} passedForward={hasPassedScreen('graph912')} />
       <Conclusion
+        key={`conclusion-${sectionResetKeys.conclusion}`}
         mode={mode}
         onToggleModeAndScrollTop={onToggleModeAndScrollTop}
         onRevealed={onRevealed}

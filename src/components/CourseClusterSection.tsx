@@ -22,9 +22,17 @@ const RACE_PARA_AFTER = "."
 interface Props {
   mode: Mode
   isActiveScreen?: boolean
+  // Whether screen has advanced past this section (ArticleSection.tsx's
+  // own hasPassedScreen('coursecluster')) — kept in sync with
+  // lastExitWasForwardRef below. Without this, a NavBar jump that lands
+  // past this section (skipping its own forward/back buttons entirely)
+  // left that ref stuck at its default, un-updated value, causing the
+  // swipe to animate from the wrong side the next time this section
+  // became relevant again.
+  passedForward?: boolean
 }
 
-export default function CourseClusterSection({ mode, isActiveScreen }: Props) {
+export default function CourseClusterSection({ mode, isActiveScreen, passedForward }: Props) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   const [allStats, setAllStats] = useState<CourseStat[]>([])
@@ -107,6 +115,7 @@ export default function CourseClusterSection({ mode, isActiveScreen }: Props) {
   // exited to (the transform value stays there, off-screen, until
   // isActiveScreen becomes true again).
   const lastExitWasForwardRef = useRef(false)
+  lastExitWasForwardRef.current = passedForward ?? lastExitWasForwardRef.current
   const goBack = () => {
     lastExitWasForwardRef.current = false
     window.dispatchEvent(new CustomEvent('exitCourseClusterToSection03'))

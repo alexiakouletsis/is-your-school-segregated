@@ -6,7 +6,7 @@ import type { Mode } from '../App'
 const PARA1_FULL = "Our two students are growing up. Now they get to make their schedules—but what to pick? Honors/AP or regular? What electives?"
 const PARA2_FULL = "Before we dive into how segregation now looks for these students in high school, let's first observe which specific classes in high school are most divisive."
 
-export default function Section03Intro({ mode, skipSignal, isActiveScreen }: { mode: Mode; skipSignal?: number; isActiveScreen?: boolean }) {
+export default function Section03Intro({ mode, skipSignal, isActiveScreen, passedForward }: { mode: Mode; skipSignal?: number; isActiveScreen?: boolean; passedForward?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
@@ -192,6 +192,7 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen }: { m
   // comments below for the full reasoning. Declared here since the reset
   // effect right after needs it.
   const lastExitWasForwardRef = useRef(false)
+  lastExitWasForwardRef.current = passedForward ?? lastExitWasForwardRef.current
 
   // Resets the wall back to its closed, unplayed state whenever the user
   // navigates away toward GraphSection68 specifically (not toward
