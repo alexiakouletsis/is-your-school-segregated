@@ -21,6 +21,13 @@ interface Props {
   // growth+morph+drop sequence that mobile's press-and-hold used to,
   // reused here for both platforms instead of just one.
   manualTrigger: number
+  // Explicit reset trigger (any increasing number) — needed alongside
+  // manualTrigger now that curtainDone can be forced back to false
+  // externally (Section01's "Click to go back" button), not just via
+  // scrolling back up. See doReset's own call site comment for the full
+  // "why" — the short version is that the scroll-based reset path can't
+  // fire once Hero's container has collapsed to height:0.
+  resetSignal?: number
   // Fires once the ENTIRE sequence (growth + curtain-drop) has actually
   // finished — distinct from onCurtainDone, which fires at the START of
   // the drop (so the intro content can mount underneath the still-falling
@@ -34,7 +41,7 @@ interface Props {
   onSequenceComplete?: () => void
 }
 
-export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainReset, onCurtainDropping, mode, pinkDotRef, greenDotRef, manualTrigger, onSequenceComplete }: Props) {
+export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainReset, onCurtainDropping, mode, pinkDotRef, greenDotRef, manualTrigger, onSequenceComplete, resetSignal }: Props) {
   const isMobile = useIsMobile()
 
   const color1 = mode === 'ses' ? 'var(--color-high-ses)' : 'var(--color-race-1)'
@@ -242,6 +249,18 @@ export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainR
     }
   }, [manualTrigger])
 
+  const doReset = () => {
+    hasTriggered.current = false
+    hasLockedRef.current = false
+    hasProgressedPastResetZone.current = false
+    growAnimRef.current?.stop()
+    radiusAnimRef.current?.stop()
+    blobScale.set(1)
+    blobRadius.set('50%')
+    setCurtainPhase('hidden')
+    onCurtainResetRef.current()
+  }
+
   // Scrolling back up near the very top still resets everything, as a
   // safety net/escape hatch for "take me back to the start" — but nothing
   // here ever TRIGGERS the growth anymore, only this reset path remains.
@@ -265,18 +284,29 @@ export default function BlobCurtain({ scrollYProgress, onCurtainDone, onCurtainR
     return scrollYProgress.on('change', (v) => {
       if (v >= 0.2) hasProgressedPastResetZone.current = true
       if (v < 0.2 && hasTriggered.current && hasProgressedPastResetZone.current) {
-        hasTriggered.current = false
-        hasLockedRef.current = false
-        hasProgressedPastResetZone.current = false
-        growAnimRef.current?.stop()
-        radiusAnimRef.current?.stop()
-        blobScale.set(1)
-        blobRadius.set('50%')
-        setCurtainPhase('hidden')
-        onCurtainResetRef.current()
+        doReset()
       }
     })
   }, [scrollYProgress])
+
+  // Explicit reset trigger — needed alongside the scroll-based one above
+  // now that Section01's own "Click to go back" button can force
+  // curtainDone back to false directly (bypassing scroll entirely). The
+  // scroll-based reset can't fire in that case: it depends on
+  // scrollYProgress crossing back below v=0.2, but Hero's own container
+  // has ALREADY collapsed to height:0 by the time curtainDone is true
+  // (see Hero.tsx), making scrollYProgress meaningless at that point.
+  // Without this, hasTriggered/curtainPhase stayed stuck at "already
+  // done," silently blocking the button from working a second time (the
+  // "click to go forward" button doing nothing, stuck on the landing
+  // page after going back) — the growth effect's own `if
+  // (hasTriggered.current) return` guard was never cleared.
+  const lastResetSignalRef = useRef(resetSignal)
+  useEffect(() => {
+    if (resetSignal === lastResetSignalRef.current) return
+    lastResetSignalRef.current = resetSignal
+    doReset()
+  }, [resetSignal])
 
   // Only visible during growth ('hidden') — hidden again as soon as the
   // curtain starts dropping. The reasoning that used to justify keeping

@@ -6,7 +6,7 @@ import type { Mode } from '../App'
 const PARA1_FULL = "Our two students are growing up. Now they get to make their schedules—but what to pick? Honors/AP or regular? What electives?"
 const PARA2_FULL = "Before we dive into how segregation now looks for these students in high school, let's first observe which specific classes in high school are most divisive."
 
-export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipSignal?: number }) {
+export default function Section03Intro({ mode, skipSignal, isActiveScreen }: { mode: Mode; skipSignal?: number; isActiveScreen?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
@@ -146,6 +146,107 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
     setSettled(true)
   }, [settled])
 
+  // Unified, platform-independent trigger — plays the same timed wall-
+  // opening animation the mobile tap handler above already has, but
+  // callable directly from an external event rather than requiring an
+  // actual tap. Used for the click-based navigation conversion:
+  // GraphSection68's own new forward button dispatches this, so the
+  // wall plays as the user's "forward" action itself, same as
+  // RepelAttract's own forward button plays Section02's node wave.
+  // forcedOpen (its own new state) overrides BOTH the desktop scroll
+  // path and the old mobile-only tap path once active, so this works
+  // identically on both platforms — neither needs to actually
+  // scroll/tap at all anymore for this entry.
+  const [forcedOpen, setForcedOpen] = useState(false)
+  const [forcedOpenProgress, setForcedOpenProgress] = useState(0)
+  const forcedOpenRef = useRef(false)
+  const triggerWallOpen = useCallback(() => {
+    if (forcedOpenRef.current || hasSettledRef.current) return
+    forcedOpenRef.current = true
+    setForcedOpen(true)
+    // Brief pause before the wall starts opening, so there's a moment to
+    // actually see it fully closed first rather than it starting to
+    // part immediately.
+    setTimeout(() => {
+      const start = Date.now()
+      const DURATION = 950
+      const tick = () => {
+        const t = Math.min(1, (Date.now() - start) / DURATION)
+        setForcedOpenProgress(t)
+        if (t < 1) {
+          requestAnimationFrame(tick)
+        } else if (!hasSettledRef.current) {
+          hasSettledRef.current = true
+          setSettled(true)
+        }
+      }
+      requestAnimationFrame(tick)
+    }, 250)
+  }, [])
+  useEffect(() => {
+    window.addEventListener('triggerSection03Wall', triggerWallOpen)
+    return () => window.removeEventListener('triggerSection03Wall', triggerWallOpen)
+  }, [triggerWallOpen])
+
+  // Tracks which direction the last exit was — see goBack/goForward's own
+  // comments below for the full reasoning. Declared here since the reset
+  // effect right after needs it.
+  const lastExitWasForwardRef = useRef(false)
+
+  // Resets the wall back to its closed, unplayed state whenever the user
+  // navigates away toward GraphSection68 specifically (not toward
+  // CourseClusterSection — see goForward below) — without this, going
+  // back to GraphSection68 and then forward again left the wall stuck at
+  // "already open" from the first visit (hasSettledRef/forcedOpenRef
+  // both still true), so triggerWallOpen's own guard silently no-opped
+  // and the animation never replayed.
+  const prevIsActiveScreenRef = useRef(isActiveScreen)
+  useEffect(() => {
+    if (prevIsActiveScreenRef.current && !isActiveScreen && !lastExitWasForwardRef.current) {
+      hasSettledRef.current = false
+      setSettled(false)
+      forcedOpenRef.current = false
+      setForcedOpen(false)
+      setForcedOpenProgress(0)
+      mobileTappedRef.current = false
+      setMobileTapped(false)
+      setMobileOpenProgress(0)
+      wallClosedRef.current = false
+      setWallClosed(false)
+    }
+    prevIsActiveScreenRef.current = isActiveScreen
+  }, [isActiveScreen])
+
+  // Back/forward navigation, matching the established convention from
+  // every other converted section. Only relevant once settled (the wall
+  // has fully opened and content is visible) — before that, there's
+  // nothing meaningful to navigate away from yet.
+  // goBack/goForward: the two directions behave differently. Leaving
+  // toward GraphSection68 keeps the existing wall-close/reset behavior
+  // with no added swipe (that transition already has the wall animation
+  // doing the work). Leaving toward CourseClusterSection swipes left
+  // instead and does NOT reset the wall (so coming back later slides
+  // the already-open content back in from the left, rather than
+  // replaying the wall).
+  const goBack = () => {
+    lastExitWasForwardRef.current = false
+    window.dispatchEvent(new CustomEvent('exitSection03ToGraph68'))
+  }
+  const goForward = () => {
+    lastExitWasForwardRef.current = true
+    window.dispatchEvent(new CustomEvent('enterCourseClusterFromSection03'))
+  }
+
+  useEffect(() => {
+    if (isMobile || !isActiveScreen || !settled) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goBack()
+      else if (e.key === 'ArrowRight') goForward()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isMobile, isActiveScreen, settled])
+
   // External trigger for the same skip a click already does — see
   // App.tsx's skipAllIntroAnimations. Guarded against StrictMode's
   // dev-mode double-invoke the same way ArticleSection's forceStart is.
@@ -164,7 +265,9 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
   // of scroll once the wall is closed, only advancing via the
   // tap-triggered timer above.
   const scrollPartAmount = p <= PART_START ? 0 : Math.min(1, (p - PART_START) / (1 - PART_START))
-  const partAmount = isMobile ? (mobileTapped ? mobileOpenProgress : 0) : (settled ? 1 : scrollPartAmount)
+  const partAmount = forcedOpen
+    ? forcedOpenProgress
+    : (isMobile ? (mobileTapped ? mobileOpenProgress : 0) : (settled ? 1 : scrollPartAmount))
   const leftPartX = `${-partAmount * 100}%`
   const rightPartX = `${partAmount * 100}%`
   // Mobile-only: content used to fade in at the exact same rate as the
@@ -174,8 +277,8 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
   // desktop. Delaying the fade to only the last 25% of the motion means
   // content stays hidden through most of the opening, only appearing
   // once the wall is nearly/fully open.
-  const mobileContentOpacity = mobileOpenProgress <= 0.75 ? 0 : (mobileOpenProgress - 0.75) / 0.25
-  const contentOpacity = isMobile ? (mobileTapped ? mobileContentOpacity : 0) : partAmount
+  const delayedContentOpacity = partAmount <= 0.75 ? 0 : (partAmount - 0.75) / 0.25
+  const contentOpacity = isMobile ? ((mobileTapped || forcedOpen) ? delayedContentOpacity : 0) : partAmount
 
   const wallHeight = panelHeight
     ? `${panelHeight * (isMobile ? 1.03 : 1.15)}px`
@@ -215,6 +318,7 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
     `}</style>
     <div
       ref={containerRef}
+      id="section03-intro"
       style={{
         height: isMobile ? '103vh' : '220vh',
         position: 'relative',
@@ -254,6 +358,8 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
           overflow: 'hidden',
           opacity: contentOpacity,
           zIndex: 10,
+          transform: `translateX(${isActiveScreen ? '0%' : (lastExitWasForwardRef.current ? '-100%' : '0%')})`,
+          transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
         }}>
           <h2 style={{
             fontFamily: "'Gaegu', cursive",
@@ -451,6 +557,64 @@ export default function Section03Intro({ mode, skipSignal }: { mode: Mode; skipS
             </motion.div>
           )}
         </AnimatePresence>
+        {!isMobile && settled && (
+          <motion.div
+            onClick={(e) => { e.stopPropagation(); goBack() }}
+            whileHover={{ scale: 1.05 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: 'absolute', bottom: '1.5rem', left: '1rem', zIndex: 50,
+              fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+              backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            }}
+          >
+            ← Click to go back
+          </motion.div>
+        )}
+        {!isMobile && settled && (
+          <motion.div
+            onClick={(e) => { e.stopPropagation(); goForward() }}
+            whileHover={{ scale: 1.05 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: 'absolute', bottom: '1.5rem', right: '1rem', zIndex: 50,
+              fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+              backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            }}
+          >
+            Click to go forward →
+          </motion.div>
+        )}
+        {isMobile && settled && (
+          <div
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const isRightHalf = e.clientX - rect.left > rect.width / 2
+              if (isRightHalf) goForward()
+              else goBack()
+            }}
+            style={{ position: 'absolute', inset: 0, zIndex: 50, cursor: 'pointer' }}
+          >
+            <div style={{
+              position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 50, pointerEvents: 'none',
+              display: 'flex', alignItems: 'center', gap: '0.3rem',
+              fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+              backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+            }}>
+              ← Tap to go back
+            </div>
+            <div style={{
+              position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 50, pointerEvents: 'none',
+              display: 'flex', alignItems: 'center', gap: '0.3rem',
+              fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+              backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+            }}>
+              Tap to go forward →
+            </div>
+          </div>
+        )}
       </div>
     </div>
     </>

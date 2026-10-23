@@ -21,9 +21,10 @@ const RACE_PARA_AFTER = "."
 
 interface Props {
   mode: Mode
+  isActiveScreen?: boolean
 }
 
-export default function CourseClusterSection({ mode }: Props) {
+export default function CourseClusterSection({ mode, isActiveScreen }: Props) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   const [allStats, setAllStats] = useState<CourseStat[]>([])
@@ -88,6 +89,43 @@ export default function CourseClusterSection({ mode }: Props) {
     return () => observer.disconnect()
   }, [])
 
+  // Direct trigger for the same reveal, bypassing the observer entirely
+  // — dispatched by Section03Intro's own forward button, which knows for
+  // certain the user is intentionally entering this section. Same root
+  // cause/fix as GraphSectionElementary and GraphSection68's earlier
+  // mobile dialogue bugs: the observer wasn't reliably firing after an
+  // instant scroll jump.
+  useEffect(() => {
+    const handler = () => setInView(true)
+    window.addEventListener('triggerCourseClusterReveal', handler)
+    return () => window.removeEventListener('triggerCourseClusterReveal', handler)
+  }, [])
+
+  // Tracks this section's own last exit direction — used for both the
+  // exit transform AND the re-entry transform below, since re-entering
+  // always animates back in from wherever this component itself last
+  // exited to (the transform value stays there, off-screen, until
+  // isActiveScreen becomes true again).
+  const lastExitWasForwardRef = useRef(false)
+  const goBack = () => {
+    lastExitWasForwardRef.current = false
+    window.dispatchEvent(new CustomEvent('exitCourseClusterToSection03'))
+  }
+  const goForward = () => {
+    lastExitWasForwardRef.current = true
+    window.dispatchEvent(new CustomEvent('enterSection03Part2FromCourseCluster'))
+  }
+
+  useEffect(() => {
+    if (isMobile || !isActiveScreen) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goBack()
+      else if (e.key === 'ArrowRight') goForward()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isMobile, isActiveScreen])
+
   const ranked = getRankedCourses(allStats, mode)
   const pctKey: keyof CourseStat = mode === 'race' ? 'whiteAsianPct' : 'higherPct'
   const highColor = mode === 'race' ? 'var(--color-race-1)' : 'var(--color-high-ses)'
@@ -98,17 +136,29 @@ export default function CourseClusterSection({ mode }: Props) {
   return (
     <div
       ref={containerRef}
+      id="course-cluster"
       style={{
         width: '100%',
+        height: '100vh',
         backgroundColor: 'var(--color-bg)',
         position: 'relative',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: isMobile ? '3.5rem 1.3rem 4rem 1.3rem' : '5rem 2rem 6rem 2rem',
-        gap: isMobile ? '1.6rem' : '2.5rem',
+        overflowX: 'hidden',
+        overflowY: 'auto',
+        overscrollBehavior: 'contain',
+        touchAction: 'pan-y',
       }}
     >
+      <motion.div
+        animate={{ x: isActiveScreen ? '0%' : (lastExitWasForwardRef.current ? '-100%' : '100%') }}
+        transition={{ duration: 0.5, ease: [0.65, 0, 0.35, 1] }}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: isMobile ? '3.5rem 1.3rem 6rem 1.3rem' : '4rem 2rem 3.5rem 2rem',
+          gap: isMobile ? '1.2rem' : '1.6rem',
+        }}
+      >
       <h3 style={{
         fontFamily: "'Gaegu', cursive",
         fontSize: isMobile ? 'clamp(1.3rem, 6vw, 1.8rem)' : 'clamp(1.6rem, 3vw, 2.4rem)',
@@ -122,14 +172,14 @@ export default function CourseClusterSection({ mode }: Props) {
 
       <p style={{
         fontFamily: "'Kiwi Maru', serif",
-        fontSize: isMobile ? 'clamp(0.85rem, 3.3vw, 1.05rem)' : 'clamp(1rem, 1.6vw, 1.25rem)',
+        fontSize: isMobile ? 'clamp(0.78rem, 3.1vw, 0.95rem)' : 'clamp(0.85rem, 1.5vw, 1.1rem)',
         color: '#111',
-        lineHeight: 1.85,
+        lineHeight: 1.7,
         maxWidth: '820px',
         width: '100%',
         textAlign: 'center',
         margin: 0,
-        minHeight: isMobile ? '9em' : '4em',
+        minHeight: isMobile ? '7em' : '3em',
       }}>
         {renderPara()}
       </p>
@@ -158,7 +208,7 @@ export default function CourseClusterSection({ mode }: Props) {
       </motion.div>
 
       {/* ranked bar list */}
-      <div style={{ width: '100%', maxWidth: '900px', position: 'relative', marginTop: isMobile ? '1.6rem' : '1.8rem' }}>
+      <div style={{ width: '100%', maxWidth: '900px', position: 'relative', marginTop: isMobile ? '1.2rem' : '1.1rem' }}>
         {/* Reference line for "what the makeup would be if classes were
             assigned at random" — computed from the exact same
             courses.json data already driving the bars above (summed
@@ -210,7 +260,7 @@ export default function CourseClusterSection({ mode }: Props) {
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: isMobile ? '0.55rem' : '0.5rem',
+          gap: isMobile ? '0.4rem' : '0.32rem',
         }}>
         {ranked.map((course, i) => {
           const pct = course[pctKey] as number
@@ -243,7 +293,7 @@ export default function CourseClusterSection({ mode }: Props) {
               <div style={{
                 flex: 1,
                 width: '100%',
-                height: isMobile ? '14px' : '16px',
+                height: isMobile ? '11px' : '12px',
                 borderRadius: '999px',
                 overflow: 'hidden',
                 display: 'flex',
@@ -278,6 +328,65 @@ export default function CourseClusterSection({ mode }: Props) {
         })}
         </div>
       </div>
+      </motion.div>
+      {!isMobile && isActiveScreen && (
+        <motion.div
+          onClick={(e) => { e.stopPropagation(); goBack() }}
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.15 }}
+          style={{
+            position: 'fixed', bottom: '1.5rem', left: '1rem', zIndex: 50,
+            fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
+        >
+          ← Click to go back
+        </motion.div>
+      )}
+      {!isMobile && isActiveScreen && (
+        <motion.div
+          onClick={(e) => { e.stopPropagation(); goForward() }}
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.15 }}
+          style={{
+            position: 'fixed', bottom: '1.5rem', right: '1rem', zIndex: 50,
+            fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
+        >
+          Click to go forward →
+        </motion.div>
+      )}
+      {isMobile && isActiveScreen && (
+        <div
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const isRightHalf = e.clientX - rect.left > rect.width / 2
+            if (isRightHalf) goForward()
+            else goBack()
+          }}
+          style={{ position: 'fixed', inset: 0, zIndex: 50, cursor: 'pointer', touchAction: 'pan-y' }}
+        >
+          <div style={{
+            position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 5, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', gap: '0.3rem',
+            fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+          }}>
+            ← Tap to go back
+          </div>
+          <div style={{
+            position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 5, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', gap: '0.3rem',
+            fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+          }}>
+            Tap to go forward →
+          </div>
+        </div>
+      )}
     </div>
   )
 }

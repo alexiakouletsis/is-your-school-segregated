@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import * as d3 from 'd3'
 import { motion, AnimatePresence, useScroll, useMotionValue } from 'framer-motion'
 import { useGraphSection } from '../hooks/useGraphSection'
@@ -159,7 +159,7 @@ function sampleAltNodes(nodes: Node[], cap: number): Node[] {
   return sampled
 }
 
-export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, navBarVisible, onExited }: {
+export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, navBarVisible, onExited, isActiveScreen }: {
   mode: Mode
   resetSignal?: number
   onRaceIntroReached?: () => void
@@ -176,6 +176,11 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
   // leaving the toggle permanently hidden. App.tsx reveals the toggle on
   // EITHER this or onRaceIntroReached, whichever fires first.
   onExited?: () => void
+  // Explicit, derived directly from ArticleSection's own screen state
+  // (screen==='graph68') — used ONLY to gate the arrow-key listener,
+  // instead of the scroll-derived isVisuallyActive. See
+  // GraphSectionElementary's identical prop for the full reasoning.
+  isActiveScreen?: boolean
 }) {
   // [generic 6th grade, alt-school 6th, alt-school 7th, alt-school 8th]
   // alt-6/7/8.json generated from the comparison school's real course-
@@ -199,6 +204,36 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
   const [dialogueDone, setDialogueDone] = useState(false)
   const dialogueTimers = useRef<ReturnType<typeof setTimeout>[]>([])
   const hasPlayedDialogue = useRef(false)
+
+  // Extracted so it can be called from TWO places: the existing
+  // scroll/intersection-based detection below (organic scrolling into
+  // this section), AND directly from a custom event dispatched by
+  // Section02's own "Click/Tap to go forward" button — that button
+  // knows for certain the user is intentionally entering this section,
+  // so it doesn't need to wait on the IntersectionObserver at all, which
+  // per feedback wasn't reliably firing after the instant scroll jump
+  // from Section02 (same root cause as GraphSectionElementary's own
+  // identical mobile dialogue bug fixed earlier this session).
+  const playGraph68Dialogue = useCallback(() => {
+    if (hasPlayedDialogue.current) return
+    hasPlayedDialogue.current = true
+    DIALOGUE.forEach((d, i) => {
+      const t = setTimeout(() => {
+        setVisibleBubbles(prev => { const next = [...prev]; next[i] = true; return next })
+        setBubbleTexts(prev => { const next = [...prev]; next[i] = d.text; return next })
+        if (i === DIALOGUE.length - 1) setDialogueDone(true)
+      }, d.delay + 300)
+      dialogueTimers.current.push(t)
+    })
+  }, [])
+
+  // Direct trigger for Section02's own "go forward" button — see
+  // playGraph68Dialogue's own comment above for the full reasoning.
+  useEffect(() => {
+    const handler = () => playGraph68Dialogue()
+    window.addEventListener('triggerGraph68Dialogue', handler)
+    return () => window.removeEventListener('triggerGraph68Dialogue', handler)
+  }, [playGraph68Dialogue])
 
   const altFullPopulationRef = useRef<Node[]>([])
   // The alt-school full population's own real edges (weight-filtered, but
@@ -238,7 +273,13 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     // Desktop step navigation moved to explicit forward/back buttons (see
     // their render further down) instead of scroll — mobile is unaffected
     // either way, since it already only navigates via tap.
-    disableScrollNav: true,
+    //
+    // Was passed as disableScrollNav before, a name the hook never
+    // actually defined or used — silently ignored the whole time, which
+    // is very likely why wheel/touch scroll kept triggering step changes
+    // completely independently of (and inconsistently with) the
+    // click/tap/arrow-key system built on top of it.
+    disableWheelNav: true,
   })
 
   // Fires once, the first time the user reaches the race-toggle-intro
@@ -326,32 +367,24 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     }
   }, [isVisuallyActive])
 
-  // Tells App.tsx's persistent toggle to bump down and clear this
-  // section's own "Click to go forward" button — see that file's own
-  // comment, and GraphSectionElementary's matching effect for why this is
-  // gated on isVisuallyActive too (not just the button's own render
-  // condition, currentStep !== STEPS.length - 1), rather than just the
-  // latter alone.
-  useEffect(() => {
-    const isForwardButtonShown = isVisuallyActive && !isMobile && currentStep !== STEPS.length - 1
-    window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'graph-68', active: isForwardButtonShown } }))
-    return () => {
-      window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'graph-68', active: false } }))
-    }
-  }, [isVisuallyActive, isMobile, currentStep])
-
   // Left/right arrow keys mirror the "Click to go back"/"Click to go
-  // forward" buttons exactly — same conditions and typing-skip behavior,
-  // same guard against acting while the user is elsewhere on the page
-  // (isVisuallyActive), desktop only.
+  // forward" buttons exactly — same conditions and typing-skip behavior.
+  // Gated on isActiveScreen (see its own comment) rather than
+  // isVisuallyActive, desktop only.
   useEffect(() => {
-    if (isMobile || !isVisuallyActive) return
+    if (isMobile || !isActiveScreen) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') {
-        if (currentStep > 0) setCurrentStep(s => Math.max(0, s - 1))
+        if (currentStep === 0) {
+          window.dispatchEvent(new CustomEvent('exitGraph68ToSection02'))
+          return
+        }
+        setCurrentStep(s => Math.max(0, s - 1))
       } else if (e.key === 'ArrowRight') {
-        if (currentStep === STEPS.length - 1) return
-        if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
+        if (currentStep === STEPS.length - 1) {
+          window.dispatchEvent(new CustomEvent('enterSection03FromGraph68'))
+          return
+        }
         skipTyping()
         if (currentStep >= 1) setSkipTypingSignal(s => s + 1)
         setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
@@ -359,7 +392,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isMobile, isVisuallyActive, currentStep, dialogueDone])
+  }, [isMobile, isActiveScreen, currentStep, dialogueDone])
 
   // Only bumped by Conclusion's bottom-of-page toggle (a deliberate full
   // restart), never by a plain mode change — see the comment on
@@ -405,18 +438,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     if (hasPlayedDialogue.current) return
     if (!sectionRef.current) return
 
-    const play = () => {
-      if (hasPlayedDialogue.current) return
-      hasPlayedDialogue.current = true
-      DIALOGUE.forEach((d, i) => {
-        const t = setTimeout(() => {
-          setVisibleBubbles(prev => { const next = [...prev]; next[i] = true; return next })
-          setBubbleTexts(prev => { const next = [...prev]; next[i] = d.text; return next })
-          if (i === DIALOGUE.length - 1) setDialogueDone(true)
-        }, d.delay + 300)
-        dialogueTimers.current.push(t)
-      })
-    }
+    const play = playGraph68Dialogue
 
     if (isMobile) {
       // This section is a plain single-screen block in normal flow on
@@ -546,7 +568,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
   // hover highlighting
   useEffect(() => {
     if (!svgRef.current) return
-    applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current)
+    applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current, undefined, true)
     // applyHoverHighlight's broad 'circle' selector also matches the
     // protagonist-border circles (added below) — reset their radius back
     // to the correct border-ratio value right after, same fix as
@@ -860,7 +882,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     // passes happened or where exactly one got cut off.
     const opacityFixTimer = setTimeout(() => {
       if (!svgRef.current) return
-      applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current)
+      applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current, undefined, true)
     }, 700)
 
     return () => {
@@ -907,14 +929,6 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
       )
     }
     return null
-  }
-
-  const skipDialogue = () => {
-    if (currentStep !== 0 || dialogueDone) return
-    dialogueTimers.current.forEach(t => clearTimeout(t))
-    setVisibleBubbles([true, true, true])
-    setBubbleTexts(DIALOGUE.map(d => d.text))
-    setDialogueDone(true)
   }
 
   // Click-to-skip for whatever's currently typing: step 1's standalone
@@ -1012,7 +1026,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
         <div style={{ height: isMobile ? '94vh' : '100%', width: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', position: 'relative' }}>
 
         {/* left panel */}
-        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'flex-start', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative' }}>
+        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: isMobile ? 'center' : 'flex-start', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative' }}>
           {/* Semi-opaque rounded panel behind the left column's content —
               same convention as GraphSectionElementary/GraphSectionRepel-
               Attract. Didn't exist here before this pass. */}
@@ -1051,7 +1065,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
                     transition={{ duration: 0.4 }}
                     style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}
                   >
-                    {currentStep === 1 ? '\u23F8\uFE0E' : STEPS[currentStep].label}
+                    {currentStep === 1 ? 'Read text to the right \u2192' : STEPS[currentStep].label}
                   </motion.p>
                 </AnimatePresence>
                 <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.6rem' }}>
@@ -1089,11 +1103,6 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
         <div
           ref={graphPanelRef}
           onClick={(e) => {
-            // Skip the dialogue on tap/click, same on every platform.
-            if (currentStep === 0 && !dialogueDone) {
-              skipDialogue()
-              return
-            }
             // Skip whichever notice/stats typing is currently running —
             // also works on desktop, where clicks otherwise fall through
             // to nothing until the isMobile check below.
@@ -1115,15 +1124,11 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
             // still runs in the same gesture.
             if (currentStep >= 1) setSkipTypingSignal(s => s + 1)
             if (!isMobile) return
-            // By this point dialogueDone is guaranteed true (the check
-            // above already returned for the not-done case) — this used
-            // to just `return` unconditionally, which on mobile was a
-            // dead end: the wheel/touch-swipe handlers that would
-            // normally advance currentStep are skipped entirely on
-            // mobile (see useGraphSection.ts), so tap is the ONLY
-            // mechanism mobile has to move forward at all, and this line
-            // blocked the very first tap needed to leave the dialogue.
-            if (currentStep === 0) { setCurrentStep(1); return }
+            // Used to unconditionally advance to step 1 on ANY tap at
+            // step 0, which meant tapping the left half (meant to go
+            // back to Section02) did nothing useful — it just advanced
+            // anyway, same as the right half. Falls through to the same
+            // left/right-half check every other step already uses.
             const target = e.target as Element
             if (target.tagName === 'circle' || target.tagName === 'image') {
               // Tapped an actual node — show/toggle its tooltip instead of
@@ -1156,9 +1161,17 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
             if (!rect) return
             const isRightHalf = e.clientX - rect.left > rect.width / 2
             if (isRightHalf) {
-              if (currentStep < STEPS.length - 1) setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
+              if (currentStep === STEPS.length - 1) {
+                window.dispatchEvent(new CustomEvent('enterSection03FromGraph68'))
+              } else {
+                setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
+              }
             } else {
-              if (currentStep > 0) setCurrentStep(s => Math.max(0, s - 1))
+              if (currentStep === 0) {
+                window.dispatchEvent(new CustomEvent('exitGraph68ToSection02'))
+              } else {
+                setCurrentStep(s => Math.max(0, s - 1))
+              }
             }
           }}
           style={{ flex: 1, minHeight: 0, height: isMobile ? undefined : '100%', position: 'relative', cursor: (isMobile || (currentStep === 0 && !dialogueDone)) ? 'pointer' : 'default' }}
@@ -1170,17 +1183,23 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
               rounding, position, no cursor override for the site's
               custom cursor SVG). Mirrors the same dialogue-skip-then-
               advance behavior mobile's tap-to-advance already has on
-              step 0. */}
-          {!isMobile && currentStep > 0 && (
+              step 0. No longer hidden on step 0 — goes back to Section02
+              instead of having nowhere to go, matching
+              GraphSectionElementary's own step-0 back button. */}
+          {!isMobile && (
             <motion.div
               onClick={(e) => {
                 e.stopPropagation()
+                if (currentStep === 0) {
+                  window.dispatchEvent(new CustomEvent('exitGraph68ToSection02'))
+                  return
+                }
                 setCurrentStep(s => Math.max(0, s - 1))
               }}
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
-                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', left: '1rem', zIndex: 5,
+                position: 'absolute', bottom: '1.5rem', left: '1rem', zIndex: 5,
                 fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
                 backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
@@ -1189,11 +1208,14 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
               ← Click to go back
             </motion.div>
           )}
-          {!isMobile && currentStep !== STEPS.length - 1 && (
+          {!isMobile && (
             <motion.div
               onClick={(e) => {
                 e.stopPropagation()
-                if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
+                if (currentStep === STEPS.length - 1) {
+                  window.dispatchEvent(new CustomEvent('enterSection03FromGraph68'))
+                  return
+                }
                 skipTyping()
                 if (currentStep >= 1) setSkipTypingSignal(s => s + 1)
                 setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
@@ -1201,7 +1223,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
-                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', right: '1rem', zIndex: 5,
+                position: 'absolute', bottom: '1.5rem', right: '1rem', zIndex: 5,
                 fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
                 backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
@@ -1264,24 +1286,21 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
           {/* Decorative spark to the left of the persistent SES/race
               toggle (position:fixed in App.tsx, top-right of the whole
               viewport) — only during this pause phase, drawing attention
-              to the toggle right as it's introduced. Desktop's top now
-              also responds to navBarVisible (already threaded into this
-              component as a prop for its own back/forward buttons),
-              bumping down further to stay aligned with the toggle's own
-              navBarVisible-driven bump, same as its forward-button-driven
-              bump below that. This still isn't a full duplicate of
-              App.tsx's stacking system (e.g. it doesn't independently
-              track forwardButtonVisible, since THIS phase's own forward
-              button is always visible, making that half of the toggle's
-              stacking a constant here rather than something to branch
-              on) — just the one additional axis that actually varies
-              while this phase is showing. key={currentStep} forces a
-              clean remount every time this phase is (re-)entered — per
-              earlier feedback that spark stopped appearing on a return
-              visit; even though the render condition itself is a plain
-              currentStep===1 check with no "seen before" gating, forcing
-              a fresh mount rules out any possible stale animation/mount
-              state as the cause. */}
+              to the toggle right as it's introduced. Desktop's top
+              responds to navBarVisible (already threaded into this
+              component as a prop, no longer needed by the back/forward
+              buttons themselves now that they've moved to the bottom of
+              the screen, but still needed here), staying aligned with
+              the toggle's own navBarVisible-driven bump — the toggle no
+              longer ALSO bumps for a visible forward button (removed
+              along with moving the buttons to the bottom), so this
+              shifted back up to match its simpler position. key=
+              {currentStep} forces a clean remount every time this phase
+              is (re-)entered — per earlier feedback that spark stopped
+              appearing on a return visit; even though the render
+              condition itself is a plain currentStep===1 check with no
+              "seen before" gating, forcing a fresh mount rules out any
+              possible stale animation/mount state as the cause. */}
           {currentStep === 1 && (
             <motion.img
               key={currentStep}
@@ -1289,7 +1308,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, ease: 'easeInOut', delay: 0.3 }}
               style={{
                 position: 'fixed',
-                top: isMobile ? '1.2rem' : (navBarVisible ? '9.35rem' : '5.65rem'),
+                top: isMobile ? '1.2rem' : (navBarVisible ? '5.15rem' : '1.4rem'),
                 right: isMobile ? '13rem' : '19rem',
                 height: isMobile ? '2.6rem' : '4rem',
                 width: 'auto',
@@ -1355,26 +1374,22 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
 
           {isMobile && (
             <>
-              {!(currentStep === 0 && !dialogueDone) && currentStep > 0 && (
-                <div style={{
-                  position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 5, pointerEvents: 'none',
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                  fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
-                  backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
-                }}>
-                  ← Tap to go back
-                </div>
-              )}
-              {!(currentStep === 0 && !dialogueDone) && currentStep < STEPS.length - 1 && (
-                <div style={{
-                  position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 5, pointerEvents: 'none',
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                  fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
-                  backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
-                }}>
-                  Tap to go forward →
-                </div>
-              )}
+              <div style={{
+                position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 5, pointerEvents: 'none',
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+              }}>
+                ← Tap to go back
+              </div>
+              <div style={{
+                position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 5, pointerEvents: 'none',
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+              }}>
+                Tap to go forward →
+              </div>
               {currentStep >= 2 && (
                 <NodeStats nodes={statsNodes} edges={statsEdges} mode={mode} visible={currentStep >= 2} mobile={true} startTyping={currentStep >= 2} skipSignal={skipTypingSignal} mobileBottomOffset="2.1rem" />
               )}

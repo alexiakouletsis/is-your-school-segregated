@@ -36,6 +36,30 @@ body {
   50% { transform: translateY(-10px); }
 }
 
+@keyframes pulseOpacity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes navCoverPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.75; }
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) translateX(var(--confetti-drift, 0px)) rotate(var(--confetti-rotate, 720deg));
+    opacity: 0;
+  }
+}
+
 @keyframes dotFloatBob {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(var(--dot-bob-amount, -8px)); }

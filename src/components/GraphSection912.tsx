@@ -50,14 +50,15 @@ const STEPS = [
 // grade 11 is now step 3).
 const STEP_NOTICES: Record<number, string> = {
   1: "This is what a high school with high levels of course tracking/segregation looks like.",
-  3: "By senior year, upperclassmen take fewer, scattered classes. Networks may look thinner, but segregation isn't necessarily lessened.",
+  2: "Course tracking tends to deepen further in grade 10 as students pick electives and advanced classes.",
+  3: "By junior year, course loads start to narrow as students continue on their prior pathways.",
+  4: "By senior year, upperclassmen take fewer, scattered classes. Networks may look thinner, but segregation isn't necessarily lessened.",
 }
-const getNoticeTarget = (step: number): string => {
-  for (let s = step; s >= 1; s--) {
-    if (STEP_NOTICES[s] !== undefined) return STEP_NOTICES[s]
-  }
-  return ''
-}
+// Only grade 9 (step 1) types in now — grades 10/11/12 each have their
+// own text directly (no more walking backward to a nearest-defined
+// fallback), crossfaded in via AnimatePresence in the JSX below instead
+// of retyped.
+const getNoticeTarget = (step: number): string => STEP_NOTICES[step] ?? ''
 
 // Real per-grade course-sharing data at this school doesn't preserve a
 // single student id across all four years the way the original K-8 dataset
@@ -358,20 +359,7 @@ function keepLargestComponent(
 // ~2597 edges — both now in the same density range as grade 9 and
 // GraphSection68's 6-8, not flooding.
 function rescueDroppedNodes(
-  sampledNodes: Node[], survivingIds: Set<number>, anyWeightPool: Edge[],
-  // Was a hardcoded 4 for every grade. Per feedback that grade 12
-  // specifically still reads sparser than the other three even after this
-  // rescue pass (its raw per-node density is the lowest of the four — see
-  // the DESKTOP_NODE_SAMPLE_CAP comment above — and its sample cap is
-  // already sitting at its full 284-student population, so there are no
-  // more real nodes to add without pulling in weaker ties), grade 12
-  // alone gets a lower bar (3) at the call site below — "just a bit"
-  // looser, not the full blanket MIN_EDGE_WEIGHT=1 that was already tried
-  // and rejected for over-densifying grades 10-12 into a gridded mesh.
-  // Every other grade keeps the original 4. UNTESTED against a live
-  // render — flag if grade 12 still reads too sparse, or swings the other
-  // way into looking too dense/gridded like the old >=1 attempt did.
-  minTies: number = 4
+  sampledNodes: Node[], survivingIds: Set<number>, anyWeightPool: Edge[]
 ): { nodes: Node[]; edges: Edge[] } {
   // Build a per-node adjacency index once (O(edges)) instead of the
   // previous approach, which re-scanned the ENTIRE anyWeightPool array for
@@ -398,7 +386,7 @@ function rescueDroppedNodes(
       const other = s === n.id ? t : s
       return survivingIds.has(other)
     })
-    if (ties.length >= minTies) {
+    if (ties.length >= 4) {
       rescuedNodes.push(n)
       rescuedEdges.push(...ties)
     }
@@ -406,15 +394,7 @@ function rescueDroppedNodes(
   return { nodes: rescuedNodes, edges: rescuedEdges }
 }
 
-export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
-  mode: Mode
-  resetSignal?: number
-  // Reported by NavBar itself, threaded down through App.tsx ->
-  // ArticleSection. Bumps this section's own "Click to go back"/"Click to
-  // go forward" buttons down to clear NavBar, matching the persistent
-  // toggle's own equivalent bump — see App.tsx's toggle-position comment.
-  navBarVisible?: boolean
-}) {
+export default function GraphSection912({ mode, resetSignal, isActiveScreen }: { mode: Mode; resetSignal?: number; isActiveScreen?: boolean }) {
   // [9th, 10th, 11th, 12th] — converted from the real GML course-sharing
   // data via scripts/convert_gml_to_json.py, dropped into public/data/graphs/
   // alongside the existing per-grade files.
@@ -474,6 +454,18 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
   // — every step here is comparably heavy (real per-grade data), so the
   // buffer applies to all of them rather than just specific ones.
   const stepEnteredAtRef = useRef(0)
+  // Always-current currentStep, for the queued-retry closure in
+  // goForward further down — currentStep itself would be stale (closed
+  // over its value at the time goForward was called) by the time a
+  // setTimeout queued there actually fires.
+  const currentStepRef = useRef(0)
+  // Guards against stacking multiple pending retries if goForward is
+  // called again (e.g. repeated clicks) while one is already queued.
+  const pendingAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // True while a forward click is queued waiting on blockForward (grade
+  // 9's settle window) — drives visible feedback on the forward
+  // button/hint so the wait reads as intentional rather than a hang.
+  const [awaitingAdvance, setAwaitingAdvance] = useState(false)
 
   // Unlike GraphSection68 (where step 0 is a dialogue phase that only ever
   // plays once actually scrolled into view, via IntersectionObserver/
@@ -494,9 +486,42 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
   // and can be skipped via click/tap same as everything else here.
   const [visibleBubbles, setVisibleBubbles] = useState<boolean[]>([false, false, false, false])
   const [bubbleTexts, setBubbleTexts] = useState<string[]>(['', '', '', ''])
-  const [dialogueDone, setDialogueDone] = useState(false)
+  const [, setDialogueDone] = useState(false)
   const dialogueTimers = useRef<ReturnType<typeof setTimeout>[]>([])
   const hasPlayedDialogue = useRef(false)
+
+  // Grade 9 gets a plain, generous, unconditional duration — not tied
+  // to simulation alpha or cache-hit status. An alpha-based "wait for
+  // actual convergence" version was tried here, but d3's alpha decays
+  // on a fixed tick-count schedule (governed by alphaDecay) regardless
+  // of how close positions already are to equilibrium — so even a
+  // perfectly pre-warmed simulation still takes the same ~70-100+ ticks
+  // to cross a low alpha threshold as a genuine cold start. That means
+  // the alpha check wasn't actually unblocking any faster in the
+  // common case, just adding a ref that has to be correctly reset and
+  // flipped inside a tick closure — more that could go quietly wrong
+  // for no real benefit. A flat, generous duration is blunter but far
+  // more predictable, which matters more here than shaving off
+  // milliseconds: this is the one thing that must not fail. Bumped
+  // from 2800 to 3300 — that alone wasn't enough margin on its own, so
+  // this is paired with DESKTOP_NODE_SAMPLE_CAP's modest pipeline-cost
+  // trim above, rather than trying to fix it with duration alone.
+  //
+  // Defined here, before the hook call below, as a named function
+  // (rather than inline) so the new button/arrow-key handlers further
+  // down can also call it directly — grade 9's animation timing is
+  // flagged above as something that must not be interrupted, so
+  // clicking forward too fast should be guarded the same way scrolling
+  // already is. Still just a closure over currentStep/stepEnteredAtRef
+  // the same way the original inline version was — only ever invoked
+  // later (on an event), well after this render completes and those are
+  // bound by the destructuring just below.
+  const blockForward = () => {
+    if (currentStep === 1) {
+      return Date.now() - stepEnteredAtRef.current < 3300
+    }
+    return Date.now() - stepEnteredAtRef.current < 900
+  }
 
   const {
     currentStep, setCurrentStep, hoveredNode, setHoveredNode, graphSize,
@@ -505,32 +530,8 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
     isMobile, setupNodeInteractions, autoZoom,
   } = useGraphSection({
     steps: STEPS,
-    // Grade 9 gets a plain, generous, unconditional duration — not tied
-    // to simulation alpha or cache-hit status. An alpha-based "wait for
-    // actual convergence" version was tried here, but d3's alpha decays
-    // on a fixed tick-count schedule (governed by alphaDecay) regardless
-    // of how close positions already are to equilibrium — so even a
-    // perfectly pre-warmed simulation still takes the same ~70-100+ ticks
-    // to cross a low alpha threshold as a genuine cold start. That means
-    // the alpha check wasn't actually unblocking any faster in the
-    // common case, just adding a ref that has to be correctly reset and
-    // flipped inside a tick closure — more that could go quietly wrong
-    // for no real benefit. A flat, generous duration is blunter but far
-    // more predictable, which matters more here than shaving off
-    // milliseconds: this is the one thing that must not fail. Bumped
-    // from 2800 to 3300 — that alone wasn't enough margin on its own, so
-    // this is paired with DESKTOP_NODE_SAMPLE_CAP's modest pipeline-cost
-    // trim above, rather than trying to fix it with duration alone.
-    blockScrollForward: () => {
-      if (currentStep === 1) {
-        return Date.now() - stepEnteredAtRef.current < 3300
-      }
-      return Date.now() - stepEnteredAtRef.current < 900
-    },
-    // Desktop step navigation moved to explicit forward/back buttons (see
-    // their render further down) instead of scroll — mobile is unaffected
-    // either way, since it already only navigates via tap.
-    disableScrollNav: true,
+    disableWheelNav: true,
+    blockScrollForward: blockForward,
   })
 
   // Mobile-only: the main graph effect below waits for this to catch up
@@ -597,45 +598,6 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
     }
   }, [isVisuallyActive])
 
-  // Tells App.tsx's persistent toggle to bump down and clear this
-  // section's own "Click to go forward" button — see that file's own
-  // comment, and GraphSectionElementary/GraphSection68's matching effects
-  // for why this is gated on isVisuallyActive too (not just the button's
-  // own render condition, currentStep !== STEPS.length - 1), rather than
-  // just the latter alone.
-  useEffect(() => {
-    const isForwardButtonShown = isVisuallyActive && !isMobile && currentStep !== STEPS.length - 1
-    window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'graph-912', active: isForwardButtonShown } }))
-    return () => {
-      window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'graph-912', active: false } }))
-    }
-  }, [isVisuallyActive, isMobile, currentStep])
-
-  // Left/right arrow keys mirror the "Click to go back"/"Click to go
-  // forward" buttons exactly — same conditions, same heavy-render timing
-  // guard forward carries (grade 9's render is heavy enough that a click
-  // straight through mid-render risked the same issue scrolling used to
-  // have), same guard against acting while the user is elsewhere on the
-  // page (isVisuallyActive), desktop only.
-  useEffect(() => {
-    if (isMobile || !isVisuallyActive) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') {
-        if (currentStep > 0) setCurrentStep(s => Math.max(0, s - 1))
-      } else if (e.key === 'ArrowRight') {
-        if (currentStep === STEPS.length - 1) return
-        if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
-        if (currentStep === 1 && Date.now() - stepEnteredAtRef.current < 3300) return
-        if (Date.now() - stepEnteredAtRef.current < 900) return
-        skipTyping()
-        setSkipTypingSignal(s => s + 1)
-        setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
-      }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [isMobile, isVisuallyActive, currentStep, dialogueDone])
-
   useEffect(() => {
     if (hasEnteredSectionRef.current || !sectionRef.current) return
     const markEntered = () => {
@@ -666,6 +628,22 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
       return () => window.removeEventListener('scroll', tryMark)
     }
   }, [isMobile])
+
+  // Direct trigger for the click-based navigation conversion — dispatched
+  // by Section03Part2's own forward button, which knows for certain the
+  // user is intentionally entering this section, bypassing the
+  // IntersectionObserver/scroll-position check above entirely (same
+  // class of fix as GraphSectionElementary/GraphSection68/
+  // CourseClusterSection's own earlier mobile entry-detection bugs).
+  useEffect(() => {
+    const handler = () => {
+      if (hasEnteredSectionRef.current) return
+      hasEnteredSectionRef.current = true
+      setHasEnteredSection(true)
+    }
+    window.addEventListener('triggerGraph912Entry', handler)
+    return () => window.removeEventListener('triggerGraph912Entry', handler)
+  }, [])
 
   // Step 0 dialogue playback — resets whenever the user navigates away
   // from step 0, replays whenever they return to it, same as
@@ -720,7 +698,65 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
     return () => window.removeEventListener('navResetGraphStep', handler)
   }, [setCurrentStep])
 
-  useEffect(() => { stepEnteredAtRef.current = Date.now() }, [currentStep])
+  useEffect(() => { stepEnteredAtRef.current = Date.now(); currentStepRef.current = currentStep }, [currentStep])
+
+  useEffect(() => {
+    return () => { if (pendingAdvanceRef.current) clearTimeout(pendingAdvanceRef.current) }
+  }, [])
+
+  // Tracks this section's own last exit direction — used for the swipe
+  // transform below. Only actually exits (dispatches an event) at the
+  // two boundaries (step 0 going back, last step going forward); inside
+  // those bounds it just moves currentStep, same as the click handlers
+  // elsewhere in this file.
+  const lastExitWasForwardRef = useRef(false)
+  const goBack = () => {
+    if (currentStep > 0) { setCurrentStep(s => Math.max(0, s - 1)); return }
+    lastExitWasForwardRef.current = false
+    window.dispatchEvent(new CustomEvent('exitGraph912ToSection03Part2'))
+  }
+  const goForward = () => {
+    if (currentStep < STEPS.length - 1) {
+      if (blockForward()) {
+        if (pendingAdvanceRef.current) return
+        setAwaitingAdvance(true)
+        const stepAtQueueTime = currentStep
+        pendingAdvanceRef.current = setTimeout(function retry() {
+          // Re-check everything on each attempt — the user may have
+          // navigated elsewhere, or still be blocked a little longer.
+          if (currentStepRef.current !== stepAtQueueTime) {
+            pendingAdvanceRef.current = null
+            setAwaitingAdvance(false)
+            return
+          }
+          if (blockForward()) {
+            pendingAdvanceRef.current = setTimeout(retry, 100)
+            return
+          }
+          pendingAdvanceRef.current = null
+          setAwaitingAdvance(false)
+          setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
+        }, 100)
+        return
+      }
+      setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
+      return
+    }
+    // Placeholder — intentionally left doing nothing until the
+    // Conclusion transition is built.
+    lastExitWasForwardRef.current = true
+    window.dispatchEvent(new CustomEvent('enterConclusionFromGraph912'))
+  }
+
+  useEffect(() => {
+    if (isMobile || !isActiveScreen) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goBack()
+      else if (e.key === 'ArrowRight') goForward()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isMobile, isActiveScreen, currentStep])
 
   // load data
   useEffect(() => {
@@ -901,23 +937,22 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
     if (!hasEnteredSection) return
     if (currentStep === 0) {
       // The dialogue step should never show leftover notice text from
-      // grade 9 — unlike grades 10/12 (which intentionally keep the
-      // previous grade's sentence on screen, see below), returning to the
-      // dialogue should always clear it.
+      // grade 9 — returning to the dialogue always clears it.
       clearInterval(noticeIntervalRef.current!)
       noticeTargetRef.current = ''
       setNoticeText('')
       return
     }
     const target = getNoticeTarget(currentStep)
-    // getNoticeTarget always resolves to a non-empty sentence for any
-    // step >= 1 now (it walks backward to the nearest defined one), so
-    // there's no more "leave whatever's currently displayed alone" case
-    // to handle here — every step >= 1 has a real target to compare
-    // against and type out if it's actually different from what's showing.
     if (target === noticeTargetRef.current) return
     noticeTargetRef.current = target
     clearInterval(noticeIntervalRef.current!)
+    if (currentStep !== 1) {
+      // Grades 10/11/12 — show immediately, no typing. The crossfade
+      // itself is handled by AnimatePresence in the JSX below.
+      setNoticeText(target)
+      return
+    }
     setNoticeText('')
     let i = 0
     noticeIntervalRef.current = setInterval(() => {
@@ -1076,17 +1111,12 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
     // Bring back real students dropped above purely for being thinly
     // connected (single weight-1 tie), anchored to their one real
     // connection — see rescueDroppedNodes comment above for why this is
-    // different from a floater. Grade 12 gets a slightly lower bar (3
-    // instead of 4) per feedback that it still read sparser than the
-    // other three grades even with this rescue pass already applied —
-    // see rescueDroppedNodes' own minTies comment for why this, not
-    // MIN_EDGE_WEIGHT, is the lever for that.
+    // different from a floater.
     const survivingIds = new Set(newNodes.map(n => n.id))
     const anyWeightPool: Edge[] = rawEdgesAnyWeight.filter(
       e => filteredNodeIds.has(e.source as number) && filteredNodeIds.has(e.target as number)
     )
-    const rescueMinTies = currentStep === 4 ? 3 : 4
-    const rescued = rescueDroppedNodes(allSampledPositioned, survivingIds, anyWeightPool, rescueMinTies)
+    const rescued = rescueDroppedNodes(allSampledPositioned, survivingIds, anyWeightPool)
     newNodes = [...newNodes, ...rescued.nodes]
     newEdges = [...newEdges, ...rescued.edges]
     }
@@ -1242,37 +1272,17 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
         enter => enter.append('line')
           .attr('stroke', d => getEdgeColor912(d, mode))
           .attr('stroke-width', 1)
-          .attr('stroke-opacity', 0)
-          // Matches applyHoverHighlight's own resting (no-hover) value of
-          // 0.4 directly, rather than fading in to a different value (0.2)
-          // and relying on the separate hover-highlight effect to correct
-          // it afterward. That correction effect only re-runs when
-          // hoveredNode or currentStep actually change — for the very
-          // first step's initial load (grade 9), the async data fetch
-          // finishing doesn't trigger either, so edges were staying stuck
-          // at the mismatched 0.2 until an actual hover forced a re-run.
-          // Matching the values here removes the mismatch regardless of
-          // effect timing.
-          .transition().duration(600).attr('stroke-opacity', 0.4),
-        // Also explicitly reasserts stroke-opacity 0.4 now, not just
-        // stroke color — this join has no key function (.data(newEdges)
-        // with no id accessor), so it matches existing <line> elements to
-        // new data by array index only. On mobile specifically, tapping
-        // past the dialogue fires setCurrentStep AND setSkipTypingSignal
-        // in the same handler, and grade 9's pre-warmed-cache path uses a
-        // much shorter zoom delay (300ms vs 2200ms cold) — if that
-        // combination causes this effect to re-run while the enter
-        // branch's 600ms fade above is still mid-transition, the second
-        // run matches those same lines as "update" (they already exist
-        // now) instead of "enter", and update previously left
-        // stroke-opacity completely untouched — freezing it at whatever
-        // partial value the interrupted fade had reached, which read as
-        // "edges more translucent than they should be" until an actual
-        // hover/tap forced applyHoverHighlight to reassert the correct
-        // value. Grade 10 doesn't hit this since it has no pre-warm
-        // fast-path to race against.
+          // Set directly, no transition — matches applyHoverHighlight's
+          // own resting (no-hover) value of 0.4 exactly. A transition
+          // here (even one already targeting the matching 0.4 value) can
+          // still be interrupted by other D3 operations touching this
+          // same 'line' selection within its own duration, leaving
+          // opacity stuck part-way — which is exactly what caused edges
+          // to load in with none or very few visible until an actual
+          // hover forced a fresh attr set via applyHoverHighlight.
+          .attr('stroke-opacity', 0.4),
         update => update
-          .transition().duration(300).attr('stroke', d => getEdgeColor912(d, mode)).attr('stroke-opacity', 0.4),
+          .transition().duration(300).attr('stroke', d => getEdgeColor912(d, mode)),
         exit => exit.transition().duration(300).attr('stroke-opacity', 0).remove()
       )
 
@@ -1352,14 +1362,6 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
     setSkipTypingSignal(s => s + 1)
   }
 
-  const skipDialogue = () => {
-    if (currentStep !== 0 || dialogueDone) return
-    dialogueTimers.current.forEach(t => clearTimeout(t))
-    setVisibleBubbles([true, true, true, true])
-    setBubbleTexts(DIALOGUE.map(d => d.text))
-    setDialogueDone(true)
-  }
-
   const bubbleColorHigh = mode === 'race' ? '#FF9260' : '#FF8BDE'
   const bubbleColorLow = mode === 'race' ? '#8BA4FF' : '#22D880'
 
@@ -1388,6 +1390,8 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
           height: '100vh',
           backgroundColor: 'var(--color-bg)',
           overflow: 'hidden',
+          transform: `translateX(${isActiveScreen ? '0%' : (lastExitWasForwardRef.current ? '-100%' : '100%')})`,
+          transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
           ...(isMobile ? { overflowAnchor: 'none' as const } : {}),
         }}
       >
@@ -1441,25 +1445,22 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
                   keeps the title's position identical on every step. */}
               <div style={{ height: '11.5rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
                 {noticeText && (
-                  <p style={{
-                    fontFamily: "'Kiwi Maru', serif",
-                    // Tracks noticeTargetRef (what's actually being
-                    // displayed) rather than currentStep === 2. Steps
-                    // without their own notice (1 and 3) intentionally
-                    // leave the previous step's text on screen rather
-                    // than clearing it (see the notice-text effect
-                    // above) — so at grade 12, noticeText is still grade
-                    // 11's long sentence even though currentStep is 3.
-                    // Checking currentStep here mismatched exactly that
-                    // case: long text, but the font meant for short
-                    // sentences, since currentStep no longer equaled 2 —
-                    // which is what read as "the font enlarges and
-                    // overlaps again" when scrolling onward past grade 11.
-                    fontSize: noticeTargetRef.current === STEP_NOTICES[3] ? 'clamp(0.94rem, 1.55vw, 1.2rem)' : 'clamp(1rem, 1.8vw, 1.4rem)',
-                    color: '#111', lineHeight: 1.6, margin: 0,
-                  }}>
-                    {renderNoticeContent()}
-                  </p>
+                  <AnimatePresence mode="wait">
+                    <motion.p key={currentStep}
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
+                      style={{
+                        fontFamily: "'Kiwi Maru', serif",
+                        // Every step now has its own dedicated text with
+                        // no fallback, so this can check currentStep
+                        // directly. Step 4 (grade 12) carries the long
+                        // sentence now (grade 11 got its own new, shorter
+                        // one), hence the smaller font there.
+                        fontSize: currentStep === 4 ? 'clamp(0.94rem, 1.55vw, 1.2rem)' : 'clamp(1rem, 1.8vw, 1.4rem)',
+                        color: '#111', lineHeight: 1.6, margin: 0,
+                      }}>
+                      {renderNoticeContent()}
+                    </motion.p>
+                  </AnimatePresence>
                 )}
               </div>
               <div style={{ flex: 1 }} />
@@ -1508,11 +1509,6 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
         <div
           ref={graphPanelRef}
           onClick={(e) => {
-            // Skip the dialogue on tap/click, same on every platform.
-            if (currentStep === 0 && !dialogueDone) {
-              skipDialogue()
-              return
-            }
             // Skip whichever notice/stats typing is currently running —
             // also works on desktop, where clicks otherwise fall through
             // to nothing until the isMobile check below.
@@ -1540,15 +1536,6 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
             // still runs in the same gesture.
             setSkipTypingSignal(s => s + 1)
             if (!isMobile) return
-            // By this point dialogueDone is guaranteed true (the check
-            // above already returned for the not-done case) — this used
-            // to just `return` unconditionally, which on mobile was a
-            // dead end: the wheel/touch-swipe handlers that would
-            // normally advance currentStep are skipped entirely on
-            // mobile (see useGraphSection.ts), so tap is the ONLY
-            // mechanism mobile has to move forward at all, and this line
-            // blocked the very first tap needed to leave the dialogue.
-            if (currentStep === 0) { setCurrentStep(1); return }
             const target = e.target as Element
             if (target.tagName === 'circle' || target.tagName === 'image') {
               const datum = d3.select(target as SVGCircleElement | SVGImageElement).datum() as Node | undefined
@@ -1576,71 +1563,20 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
             const rect = graphPanelRef.current?.getBoundingClientRect()
             if (!rect) return
             const isRightHalf = e.clientX - rect.left > rect.width / 2
-            if (isRightHalf) {
-              if (currentStep < STEPS.length - 1) setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
-            } else {
-              if (currentStep > 0) setCurrentStep(s => Math.max(0, s - 1))
-            }
+            if (isRightHalf) goForward()
+            else goBack()
           }}
-          style={{ flex: 1, minHeight: 0, height: isMobile ? undefined : '100%', position: 'relative', cursor: (isMobile || (currentStep === 0 && !dialogueDone)) ? 'pointer' : 'default' }}
+          style={{ flex: 1, minHeight: 0, height: isMobile ? undefined : '100%', position: 'relative', cursor: isMobile ? 'pointer' : 'default' }}
         >
-          {/* Desktop-only "Click to go back"/"Click to go forward" —
-              replaces scroll-driven step navigation (see disableScrollNav
-              in the useGraphSection call above), matching
-              GraphSectionElementary/GraphSection68's own buttons exactly
-              (size, rounding, position, no cursor override for the
-              site's custom cursor SVG). Forward carries over the same
-              guard blockScrollForward used to provide against scroll —
-              grade 9's render is heavy enough (up to 3300ms) that
-              allowing a click straight through mid-render risked the
-              same "jumped ahead before it finished" issue scrolling used
-              to have, just via a different input method. */}
-          {!isMobile && currentStep > 0 && (
-            <motion.div
-              onClick={(e) => {
-                e.stopPropagation()
-                setCurrentStep(s => Math.max(0, s - 1))
-              }}
-              whileHover={{ scale: 1.05 }}
-              transition={{ duration: 0.15 }}
-              style={{
-                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', left: '1rem', zIndex: 5,
-                fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
-                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-              }}
-            >
-              ← Click to go back
-            </motion.div>
-          )}
-          {!isMobile && currentStep !== STEPS.length - 1 && (
-            <motion.div
-              onClick={(e) => {
-                e.stopPropagation()
-                if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
-                if (currentStep === 1 && Date.now() - stepEnteredAtRef.current < 3300) return
-                if (Date.now() - stepEnteredAtRef.current < 900) return
-                skipTyping()
-                setSkipTypingSignal(s => s + 1)
-                setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
-              }}
-              whileHover={{ scale: 1.05 }}
-              transition={{ duration: 0.15 }}
-              style={{
-                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', right: '1rem', zIndex: 5,
-                fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
-                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-              }}
-            >
-              Click to go forward →
-            </motion.div>
-          )}
           {isMobile && noticeText && (
             <div style={{ position: 'absolute', top: '2.2rem', left: '10%', right: '10%', zIndex: 5, padding: '0.6rem 1rem', backgroundColor: 'rgba(250,249,246,0.92)', borderRadius: '8px' }}>
-              <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.6rem, 2.5vw, 0.75rem)', color: '#111', lineHeight: 1.5, margin: 0, textAlign: 'center' }}>
-                {renderNoticeContent()}
-              </p>
+              <AnimatePresence mode="wait">
+                <motion.p key={currentStep}
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
+                  style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.6rem, 2.5vw, 0.75rem)', color: '#111', lineHeight: 1.5, margin: 0, textAlign: 'center' }}>
+                  {renderNoticeContent()}
+                </motion.p>
+              </AnimatePresence>
             </div>
           )}
 
@@ -1651,16 +1587,11 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
               as GraphSection68's dialogue. One extra line than 68's own
               three, so the vertical gaps below just continue the same
               per-line spacing one step further rather than compressing
-              to fit the same total range. Desktop's left/right offsets
-              moved inward (19% -> 23%) per feedback that the right-side
-              (green/blue) bubbles' own right edge was getting overlapped
-              by the persistent SES/race toggle's left edge — moved both
-              sides in by the same amount for symmetry, mobile untouched
-              since it wasn't reported there. */}
+              to fit the same total range. */}
           {currentStep === 0 && (
             <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
               {/* "I feel like I never see you anymore." — highest */}
-              <div style={{ position: 'absolute', left: isMobile ? '15%' : '23%', top: isMobile ? '13%' : '6%', maxWidth: isMobile ? '160px' : '240px' }}>
+              <div style={{ position: 'absolute', left: isMobile ? '15%' : '19%', top: isMobile ? '13%' : '6%', maxWidth: isMobile ? '160px' : '240px' }}>
                 {visibleBubbles[0] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -1674,7 +1605,7 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
                 )}
               </div>
               {/* "I know, it's like we don't even go to the same school." */}
-              <div style={{ position: 'absolute', right: isMobile ? '15%' : '23%', top: isMobile ? '21%' : '15%', maxWidth: isMobile ? '184px' : '255px' }}>
+              <div style={{ position: 'absolute', right: isMobile ? '15%' : '19%', top: isMobile ? '21%' : '15%', maxWidth: isMobile ? '184px' : '255px' }}>
                 {visibleBubbles[1] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -1688,7 +1619,7 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
                 )}
               </div>
               {/* "Yeah. Are you at least free after school?" */}
-              <div style={{ position: 'absolute', left: isMobile ? '15%' : '23%', top: isMobile ? '29%' : '24%', maxWidth: isMobile ? '160px' : '240px' }}>
+              <div style={{ position: 'absolute', left: isMobile ? '15%' : '19%', top: isMobile ? '29%' : '24%', maxWidth: isMobile ? '160px' : '240px' }}>
                 {visibleBubbles[2] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -1702,7 +1633,7 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
                 )}
               </div>
               {/* "Sorry, I'm too busy." — lowest */}
-              <div style={{ position: 'absolute', right: isMobile ? '15%' : '23%', top: isMobile ? '37%' : '33%', maxWidth: isMobile ? '172px' : '240px' }}>
+              <div style={{ position: 'absolute', right: isMobile ? '15%' : '19%', top: isMobile ? '37%' : '33%', maxWidth: isMobile ? '172px' : '240px' }}>
                 {visibleBubbles[3] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -1720,26 +1651,23 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
 
           {isMobile && (
             <>
-              {!(currentStep === 0 && !dialogueDone) && currentStep > 0 && (
-                <div style={{
-                  position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 5, pointerEvents: 'none',
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                  fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
-                  backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
-                }}>
-                  ← Tap to go back
-                </div>
-              )}
-              {!(currentStep === 0 && !dialogueDone) && currentStep < STEPS.length - 1 && (
-                <div style={{
-                  position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 5, pointerEvents: 'none',
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                  fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
-                  backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
-                }}>
-                  Tap to go forward →
-                </div>
-              )}
+              <div style={{
+                position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 5, pointerEvents: 'none',
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+              }}>
+                ← Tap to go back
+              </div>
+              <div style={{
+                position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 5, pointerEvents: 'none',
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+                animation: awaitingAdvance ? 'pulseOpacity 0.8s ease-in-out infinite' : undefined,
+              }}>
+                {awaitingAdvance ? 'One moment\u2026' : 'Tap to go forward →'}
+              </div>
               {currentStep >= 1 && (
                 <NodeStats nodes={fullPopulationRef.current} edges={fullEdgesRef.current} mode={mode} visible={currentStep >= 1} mobile={true} startTyping={currentStep >= 1} skipSignal={skipTypingSignal} mobileBottomOffset="2.1rem" />
               )}
@@ -1753,6 +1681,37 @@ export default function GraphSection912({ mode, resetSignal, navBarVisible }: {
         </div>
         </div>
       </div>
+      {!isMobile && isActiveScreen && (
+        <motion.div
+          onClick={(e) => { e.stopPropagation(); goBack() }}
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.15 }}
+          style={{
+            position: 'fixed', bottom: '1.5rem', left: 'calc(28% + 1rem)', zIndex: 50,
+            fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
+        >
+          ← Click to go back
+        </motion.div>
+      )}
+      {!isMobile && isActiveScreen && (
+        <motion.div
+          onClick={(e) => { e.stopPropagation(); goForward() }}
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.15 }}
+          style={{
+            position: 'fixed', bottom: '1.5rem', right: '1rem', zIndex: 50,
+            fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            animation: awaitingAdvance ? 'pulseOpacity 0.8s ease-in-out infinite' : undefined,
+          }}
+        >
+          {awaitingAdvance ? 'One moment\u2026' : 'Click to go forward →'}
+        </motion.div>
+      )}
     </div>
   )
 }

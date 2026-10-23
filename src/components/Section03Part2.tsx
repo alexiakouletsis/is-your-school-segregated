@@ -1,6 +1,6 @@
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useScroll } from 'framer-motion'
+import { useScroll, motion } from 'framer-motion'
 import type { Mode } from '../App'
 
 const PARA1 = "As students are filtered into varying levels of classes (regular, honors, AP, etc.), course tracking remains prevalent in high school. Throughout their four years, students continue to develop into solidified class pathways, often failing to interact across those boundaries. These boundaries show clear correlation with attributes like a student's ethnicity and socioeconomic background."
@@ -28,9 +28,10 @@ interface Props {
   // run externally, the same way a click on it already does.
   skipSignal?: number
   mode: Mode
+  isActiveScreen?: boolean
 }
 
-export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverlaySettled, skipSignal, mode }: Props) {
+export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverlaySettled, skipSignal, mode, isActiveScreen }: Props) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
   const [settled, setSettled] = useState(false)
@@ -109,6 +110,41 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverla
     skipAll()
   }, [skipSignal, skipAll])
 
+  // Direct trigger for the click-based navigation conversion — reveals
+  // the text immediately on entry (reusing skipAll, which already calls
+  // onAnimDone, same external contract as the existing scroll-based
+  // path) rather than waiting on scroll position.
+  useEffect(() => {
+    const handler = () => skipAll()
+    window.addEventListener('triggerSection03Part2Reveal', handler)
+    return () => window.removeEventListener('triggerSection03Part2Reveal', handler)
+  }, [skipAll])
+
+  // Tracks this section's own last exit direction — used for both the
+  // exit transform AND the re-entry transform below, same pattern as
+  // CourseClusterSection. Now has two wired directions (backward to
+  // CourseClusterSection, forward to GraphSection912), so this can no
+  // longer just always exit/enter from the right.
+  const lastExitWasForwardRef = useRef(false)
+  const goBack = () => {
+    lastExitWasForwardRef.current = false
+    window.dispatchEvent(new CustomEvent('exitSection03Part2ToCourseCluster'))
+  }
+  const goForward = () => {
+    lastExitWasForwardRef.current = true
+    window.dispatchEvent(new CustomEvent('enterGraph912FromSection03Part2'))
+  }
+
+  useEffect(() => {
+    if (isMobile || !isActiveScreen) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goBack()
+      else if (e.key === 'ArrowRight') goForward()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isMobile, isActiveScreen])
+
   const para2Segments = mode === 'race' ? [
     { text: RACE_PARA2_BEFORE, color: null, big: false },
     { text: RACE_PARA2_ORANGE, color: 'var(--color-race-1)', big: false },
@@ -141,18 +177,26 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverla
   return (
     <div
       ref={containerRef}
+      id="section03-part2"
       style={{
         width: '100%',
         backgroundColor: 'var(--color-bg)',
         position: 'relative',
         zIndex: 10,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: isMobile ? '5rem 1.5rem 8.5rem 1.5rem' : '6rem 2rem 9rem 2rem',
-        gap: isMobile ? '1.3rem' : '2.7rem',
+        overflowX: 'hidden',
       }}
     >
+      <motion.div
+        animate={{ x: isActiveScreen ? '0%' : (lastExitWasForwardRef.current ? '-100%' : '100%') }}
+        transition={{ duration: 0.5, ease: [0.65, 0, 0.35, 1] }}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: isMobile ? '5rem 1.5rem 8.5rem 1.5rem' : '6rem 2rem 9rem 2rem',
+          gap: isMobile ? '1.3rem' : '2.7rem',
+        }}
+      >
       <p style={{
         fontFamily: "'Kiwi Maru', serif",
         fontSize: isMobile ? 'clamp(0.85rem, 3.6vw, 1.05rem)' : 'clamp(1.05rem, 1.9vw, 1.5rem)',
@@ -223,6 +267,65 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverla
           }} />
         </div>
       </div>
+      </motion.div>
+      {!isMobile && isActiveScreen && (
+        <motion.div
+          onClick={(e) => { e.stopPropagation(); goBack() }}
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.15 }}
+          style={{
+            position: 'fixed', bottom: '1.5rem', left: '1rem', zIndex: 50,
+            fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
+        >
+          ← Click to go back
+        </motion.div>
+      )}
+      {!isMobile && isActiveScreen && (
+        <motion.div
+          onClick={(e) => { e.stopPropagation(); goForward() }}
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.15 }}
+          style={{
+            position: 'fixed', bottom: '1.5rem', right: '1rem', zIndex: 50,
+            fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
+        >
+          Click to go forward →
+        </motion.div>
+      )}
+      {isMobile && isActiveScreen && (
+        <div
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const isRightHalf = e.clientX - rect.left > rect.width / 2
+            if (isRightHalf) goForward()
+            else goBack()
+          }}
+          style={{ position: 'fixed', inset: 0, zIndex: 50, cursor: 'pointer' }}
+        >
+          <div style={{
+            position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 50, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', gap: '0.3rem',
+            fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+          }}>
+            ← Tap to go back
+          </div>
+          <div style={{
+            position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 50, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', gap: '0.3rem',
+            fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+          }}>
+            Tap to go forward →
+          </div>
+        </div>
+      )}
     </div>
   )
 }

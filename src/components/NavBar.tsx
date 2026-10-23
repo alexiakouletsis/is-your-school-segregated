@@ -18,6 +18,13 @@ interface Props {
   // id — see App.tsx's skipAnimationsUpTo for why the id matters (only
   // sections before the destination should be skipped, not everything).
   onNavigate?: (id: string) => void
+  // Separate from onNavigate above — triggers App.tsx's brief cover
+  // overlay. Kept as its own prop rather than folded into onNavigate
+  // (skipAnimationsUpTo) because that function is also called directly
+  // by ArticleSection's own normal forward-click action on Section01,
+  // which has nothing to do with an actual NavBar click and shouldn't
+  // show the cover.
+  onBeforeNavigate?: () => void
   // Reports the bar's own current desktop visibility back up to App.tsx,
   // which uses it to bump the persistent top-right toggle down when the
   // bar is showing (so the two don't overlap) and back to its normal spot
@@ -34,7 +41,7 @@ interface Props {
 // doesn't perfectly pin inside the transformed wrapper" issue already
 // documented elsewhere in this codebase — keeping this component outside
 // that tree entirely avoids it rather than working around it.
-export default function NavBar({ reachedConclusion, onNavigate, onVisibilityChange }: Props) {
+export default function NavBar({ reachedConclusion, onNavigate, onBeforeNavigate, onVisibilityChange }: Props) {
   const isMobile = useIsMobile()
   const [mobileOpen, setMobileOpen] = useState(false)
   // Desktop-only concept: whether the user currently wants the bar shown.
@@ -71,8 +78,13 @@ export default function NavBar({ reachedConclusion, onNavigate, onVisibilityChan
   }, [barVisible, isMobile, onVisibilityChange])
 
   const scrollToSection = (id: string) => {
+    onBeforeNavigate?.()
+    // The actual scroll now happens in ArticleSection.tsx's own
+    // navBarJumpToScreen handler, dispatched as part of onNavigate below
+    // — that handler applies each section's own established mobile-entry
+    // offset, matching normal click-through navigation, which a plain
+    // scrollIntoView() here never did.
     onNavigate?.(id)
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     setMobileOpen(false)
   }
 

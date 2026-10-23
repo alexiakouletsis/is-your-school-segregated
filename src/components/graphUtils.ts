@@ -160,8 +160,16 @@ export const applyHoverHighlight = (
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
   hoveredNode: number | null,
   activeEdges: Edge[],
-  useLargeRadius?: boolean
+  useLargeRadius?: boolean,
+  // Per feedback, the default fade (nodes to 0.15, edges to 0.05) reads
+  // as too stark/jarring. Added as an opt-in rather than changed in
+  // place since this function is shared with GraphSection912, which
+  // isn't getting this pass yet — callers that want the softer fade
+  // pass true; omitting it keeps the original values unchanged.
+  subtleFade?: boolean
 ) => {
+  const fadedNodeOpacity = subtleFade ? 0.45 : 0.15
+  const fadedEdgeOpacity = subtleFade ? 0.18 : 0.05
   if (hoveredNode === null) {
     svg.selectAll<SVGCircleElement, Node>('circle').attr('opacity', 1).attr('r', useLargeRadius ? 10 : 6)
     svg.selectAll<SVGLineElement, Edge>('line').attr('stroke-opacity', 0.4)
@@ -180,14 +188,14 @@ export const applyHoverHighlight = (
     if (tgt === hoveredNode) connectedIds.add(src)
   })
   svg.selectAll<SVGCircleElement, Node>('circle')
-    .attr('opacity', d => connectedIds.has(d.id) ? 1 : 0.15)
+    .attr('opacity', d => connectedIds.has(d.id) ? 1 : fadedNodeOpacity)
     .attr('r', d => d.id === hoveredNode ? 9 : (useLargeRadius ? 10 : 6))
   svg.selectAll<SVGLineElement, Edge>('line')
     .attr('stroke-opacity', d => {
       const src = typeof d.source === 'object' ? (d.source as Node).id : d.source as number
       const tgt = typeof d.target === 'object' ? (d.target as Node).id : d.target as number
-      return (src === hoveredNode || tgt === hoveredNode) ? 0.8 : 0.05
+      return (src === hoveredNode || tgt === hoveredNode) ? 0.8 : fadedEdgeOpacity
     })
   svg.selectAll<SVGImageElement, Node>('image')
-    .attr('opacity', d => connectedIds.has(d.id) ? 1 : 0.15)
+    .attr('opacity', d => connectedIds.has(d.id) ? 1 : fadedNodeOpacity)
 }

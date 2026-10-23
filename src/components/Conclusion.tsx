@@ -34,6 +34,35 @@ const HOLD_END_MOBILE = 0.35
 const BURST_MS = 900
 const CONTENT_DELAY_MS = 350
 
+interface ConfettiPiece {
+  id: number
+  left: number
+  color: string
+  size: number
+  rotation: number
+  duration: number
+  delay: number
+  drift: number
+}
+
+function generateConfetti(mode: Mode, count: number): ConfettiPiece[] {
+  const colors = mode === 'race' ? RACE_COLORS : SES_COLORS
+  const pieces: ConfettiPiece[] = []
+  for (let i = 0; i < count; i++) {
+    pieces.push({
+      id: i,
+      left: Math.random() * 100,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      size: 12 + Math.random() * 12,
+      rotation: Math.random() * 360,
+      duration: 2.4 + Math.random() * 1.8,
+      delay: Math.random() * 0.5,
+      drift: -40 + Math.random() * 80,
+    })
+  }
+  return pieces
+}
+
 function generateDots(mode: Mode, count: number): Dot[] {
   const colors = mode === 'race' ? RACE_COLORS : SES_COLORS
   const dots: Dot[] = []
@@ -128,9 +157,10 @@ interface Props {
   onToggleModeAndScrollTop?: () => void
   skipSignal?: number
   onRevealed?: () => void
+  isActiveScreen?: boolean
 }
 
-export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleModeAndScrollTop, skipSignal, onRevealed }: Props) {
+export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleModeAndScrollTop, skipSignal, onRevealed, isActiveScreen }: Props) {
   const isMobile = useIsMobile()
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -315,6 +345,10 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
 
   const skipAll = useCallback(() => {
     if (skipped || infoDone) return
+    if (triggerConvergeRafRef.current) {
+      cancelAnimationFrame(triggerConvergeRafRef.current)
+      triggerConvergeRafRef.current = null
+    }
     setSkipped(true)
     setContentVisible(true)
     dialogueTimersRef.current.forEach(t => clearTimeout(t))
@@ -339,6 +373,85 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
     setDialogueDone(true)
   }, [dialogueDone])
 
+  const triggerConvergeRafRef = useRef<number | null>(null)
+  const triggerConvergeExplode = useCallback(() => {
+    if (!containerRef.current) return
+    const startScrollY = window.scrollY
+    const containerTop = containerRef.current.getBoundingClientRect().top + window.scrollY
+    const containerHeight = containerRef.current.offsetHeight
+    const holdEnd = isMobile ? HOLD_END_MOBILE : HOLD_END
+    const targetP = Math.min(1, holdEnd + 0.03)
+    const targetScrollY = containerTop + (containerHeight - window.innerHeight) * targetP
+    const DURATION = 1800
+    const start = Date.now()
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - start) / DURATION)
+      const eased = easeOutCubic(t)
+      window.scrollTo(0, startScrollY + (targetScrollY - startScrollY) * eased)
+      window.dispatchEvent(new Event('scroll'))
+      if (t < 1) {
+        triggerConvergeRafRef.current = requestAnimationFrame(tick)
+      } else {
+        triggerConvergeRafRef.current = null
+      }
+    }
+    triggerConvergeRafRef.current = requestAnimationFrame(tick)
+  }, [isMobile])
+
+  useEffect(() => {
+    const handler = () => triggerConvergeExplode()
+    window.addEventListener('triggerConclusionConverge', handler)
+    return () => {
+      window.removeEventListener('triggerConclusionConverge', handler)
+      if (triggerConvergeRafRef.current) cancelAnimationFrame(triggerConvergeRafRef.current)
+    }
+  }, [triggerConvergeExplode])
+
+  // Splits this section's content into two horizontally-swiped parts —
+  // 0: "Fast forward 20 years..." + the two adult nodes/dialogue
+  // 1: the paragraph, links, and bottom node decorations
+  // Only relevant once contentVisible (nothing to navigate between
+  // before the converge/explode animation finishes). Same direction-
+  // tracking pattern as CourseClusterSection/Section03Part2.
+  const [conclusionPart, setConclusionPart] = useState<0 | 1>(0)
+  const lastExitWasForwardRef = useRef(false)
+  // Confetti celebration for reaching Part 2 — the end of the site.
+  // Regenerated fresh each time (rather than once on mount) so colors
+  // match whatever mode is currently active, and so going back to Part 1
+  // and forward again replays it.
+  const [confettiPieces, setConfettiPieces] = useState<ConfettiPiece[]>([])
+  const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const triggerConfetti = () => {
+    if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current)
+    setConfettiPieces(generateConfetti(mode, isMobile ? 70 : 140))
+    confettiTimerRef.current = setTimeout(() => setConfettiPieces([]), 4200)
+  }
+  useEffect(() => {
+    return () => { if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current) }
+  }, [])
+  const goBackPart = () => {
+    if (conclusionPart === 1) { setConclusionPart(0); return }
+    // Reverse the whole sequence and return to GraphSection912 — scroll
+    // back to the top of this section, which the existing scroll-driven
+    // logic above will naturally detect as crossing back below
+    // reverseThreshold and reset via resetContent().
+    const el = document.getElementById('conclusion')
+    if (el) {
+      const target = window.scrollY + el.getBoundingClientRect().top
+      window.scrollTo({ top: target, behavior: 'auto' })
+    }
+    resetContent()
+    lastExitWasForwardRef.current = false
+    window.dispatchEvent(new CustomEvent('exitConclusionToGraph912'))
+  }
+  const goForwardPart = () => {
+    if (conclusionPart === 0) {
+      setConclusionPart(1)
+      triggerConfetti()
+    }
+    // Part 1 is the end of the site for now — no further action.
+  }
+
   const lastSkipSignalRef = useRef(skipSignal)
   useEffect(() => {
     if (skipSignal === undefined) return
@@ -346,6 +459,18 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
     lastSkipSignalRef.current = skipSignal
     skipAll()
   }, [skipSignal, skipAll])
+
+  useEffect(() => {
+    if (isMobile || !isActiveScreen || !contentVisible) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      if (!dialogueDone) { skipDialogue(); return }
+      if (e.key === 'ArrowLeft') goBackPart()
+      else goForwardPart()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isMobile, isActiveScreen, contentVisible, conclusionPart, dialogueDone])
 
   useEffect(() => {
     if (isMobile) return
@@ -361,6 +486,23 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
       window.removeEventListener('touchmove', preventScroll)
     }
   }, [sequenceStarted, infoDone, skipped, isMobile])
+
+  // Blocks manual wheel/touch scroll entirely while this is the active
+  // screen and content isn't visible yet — navigation into/through this
+  // section is click-only now (see triggerConvergeExplode), and without
+  // this the user could still free-scroll and drive the converge
+  // animation themselves before ever clicking forward, or interrupt the
+  // programmatic tween mid-flight.
+  useEffect(() => {
+    if (!isActiveScreen || contentVisible) return
+    const preventScroll = (e: Event) => { e.preventDefault() }
+    window.addEventListener('wheel', preventScroll, { passive: false })
+    window.addEventListener('touchmove', preventScroll, { passive: false })
+    return () => {
+      window.removeEventListener('wheel', preventScroll)
+      window.removeEventListener('touchmove', preventScroll)
+    }
+  }, [isActiveScreen, contentVisible])
 
   useEffect(() => {
     return releaseMobileLock
@@ -709,6 +851,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
   return (
     <div
       ref={containerRef}
+      id="conclusion"
       onClick={
         sequenceStarted && !infoDone ? skipAll
         : contentVisible && !dialogueDone ? skipDialogue
@@ -792,6 +935,13 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             position: 'absolute',
             inset: 0,
             zIndex: 5,
+            overflow: 'hidden',
+            pointerEvents: contentVisible ? 'auto' : 'none',
+          }}
+        >
+        <div style={{
+            position: 'absolute',
+            inset: 0,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -799,7 +949,8 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             overflowY: isMobile ? 'visible' : 'auto',
             padding: isMobile ? '7.5rem 1.5rem 2.2rem 1.5rem' : '7.5rem 3rem 6.5rem 3rem',
             gap: isMobile ? '2.2rem' : '3.2rem',
-            pointerEvents: contentVisible ? 'auto' : 'none',
+            transform: `translateX(${conclusionPart === 0 ? '0%' : '-100%'})`,
+            transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
           }}
         >
           <h2 style={{
@@ -893,7 +1044,21 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
               />
             </div>
           </div>
+        </div>
 
+        <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            overflowY: isMobile ? 'visible' : 'auto',
+            padding: isMobile ? '3.8rem 1.5rem 2.2rem 1.5rem' : '5.3rem 3rem 6.5rem 3rem',
+            transform: `translateX(${conclusionPart === 1 ? '0%' : '100%'})`,
+            transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
+          }}
+        >
           <div
             ref={bodyRef}
             style={{
@@ -982,7 +1147,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             maxWidth: isMobile ? undefined : '1650px',
             padding: isMobile ? 0 : '0',
             flexShrink: 0,
-            marginTop: isMobile ? '2.5rem' : '1.8rem',
+            marginTop: isMobile ? '-0.3rem' : '1.8rem',
             position: 'relative',
             zIndex: 1,
           }}>
@@ -996,8 +1161,93 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             />
           </div>
           </div>
+        </div>
         </motion.div>
       </div>
+      {!isMobile && contentVisible && (
+        <motion.div
+          onClick={(e) => { e.stopPropagation(); if (!dialogueDone) { skipDialogue(); return } goBackPart() }}
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.15 }}
+          style={{
+            position: 'fixed', bottom: '1.5rem', left: '1rem', zIndex: 50,
+            fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
+        >
+          ← Click to go back
+        </motion.div>
+      )}
+      {!isMobile && contentVisible && conclusionPart === 0 && (
+        <motion.div
+          onClick={(e) => { e.stopPropagation(); if (!dialogueDone) { skipDialogue(); return } goForwardPart() }}
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.15 }}
+          style={{
+            position: 'fixed', bottom: '1.5rem', right: '1rem', zIndex: 50,
+            fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
+        >
+          Click to go forward →
+        </motion.div>
+      )}
+      {isMobile && contentVisible && (
+        <div
+          onClick={(e) => {
+            if (!dialogueDone) { skipDialogue(); return }
+            const rect = e.currentTarget.getBoundingClientRect()
+            const isRightHalf = e.clientX - rect.left > rect.width / 2
+            if (isRightHalf) goForwardPart()
+            else goBackPart()
+          }}
+          style={{ position: 'fixed', inset: 0, zIndex: 50, cursor: 'pointer', touchAction: 'pan-y' }}
+        >
+          <div style={{
+            position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 5, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', gap: '0.3rem',
+            fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+            backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+          }}>
+            ← Tap to go back
+          </div>
+          {conclusionPart === 0 && (
+            <div style={{
+              position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 5, pointerEvents: 'none',
+              display: 'flex', alignItems: 'center', gap: '0.3rem',
+              fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+              backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+            }}>
+              Tap to go forward →
+            </div>
+          )}
+        </div>
+      )}
+      {confettiPieces.length > 0 && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 990, overflow: 'hidden', pointerEvents: 'none' }}>
+          {confettiPieces.map(piece => (
+            <div
+              key={piece.id}
+              style={{
+                position: 'absolute',
+                top: '-5vh',
+                left: `${piece.left}%`,
+                width: `${piece.size}px`,
+                height: `${piece.size * 0.4}px`,
+                backgroundColor: piece.color,
+                borderRadius: '2px',
+                animation: `confettiFall ${piece.duration}s linear`,
+                animationDelay: `${piece.delay}s`,
+                animationFillMode: 'forwards',
+                ['--confetti-drift' as string]: `${piece.drift}px`,
+                ['--confetti-rotate' as string]: `${piece.rotation + 720}deg`,
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

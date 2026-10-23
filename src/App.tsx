@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import Hero from './components/Hero'
 import ArticleSection from './components/ArticleSection'
 import NavBar from './components/NavBar'
@@ -57,28 +58,6 @@ function App() {
     }
     window.addEventListener('graphSectionActive', handler)
     return () => window.removeEventListener('graphSectionActive', handler)
-  }, [])
-
-  // Same pattern as graphSectionActive just above, but tracking
-  // specifically whether any graph section's own "Click to go forward"
-  // button is currently on screen — the persistent toggle needs to bump
-  // down to avoid covering it (see the toggle's own top calculation
-  // below). Each graph section with click-driven navigation
-  // (GraphSectionElementary, GraphSection68, GraphSectionRepelAttract,
-  // GraphSection912) dispatches 'graphForwardButtonActive' with {id,
-  // active} whenever its own forward button's visibility condition
-  // changes.
-  const [forwardButtonVisible, setForwardButtonVisible] = useState(false)
-  useEffect(() => {
-    const activeButtons = new Set<string>()
-    const handler = (e: Event) => {
-      const { id, active } = (e as CustomEvent<{ id: string, active: boolean }>).detail
-      if (active) activeButtons.add(id)
-      else activeButtons.delete(id)
-      setForwardButtonVisible(activeButtons.size > 0)
-    }
-    window.addEventListener('graphForwardButtonActive', handler)
-    return () => window.removeEventListener('graphForwardButtonActive', handler)
   }, [])
 
   // Gates scrolling until the landing page's own assets (images + fonts)
@@ -212,6 +191,29 @@ function App() {
     return () => window.removeEventListener('wheel', blockWheel)
   }, [assetsReady, typingDone])
 
+  // Global vertical scroll lock — navigation is fully click/tap-driven at
+  // this point in the site, so free wheel/touch scrolling is disabled
+  // everywhere once the initial landing sequence finishes (typingDone),
+  // picking up right where the pre-landing lock above releases.
+  // CourseClusterSection is the one deliberate exception — its own
+  // internal scroll (needed to see the full, often-taller-than-viewport
+  // bar chart) is preserved by checking whether the event's target sits
+  // within its own #course-cluster subtree.
+  useEffect(() => {
+    if (!typingDone) return
+    const preventScroll = (e: Event) => {
+      const target = e.target as Element | null
+      if (target?.closest?.('#course-cluster')) return
+      e.preventDefault()
+    }
+    window.addEventListener('wheel', preventScroll, { passive: false })
+    window.addEventListener('touchmove', preventScroll, { passive: false })
+    return () => {
+      window.removeEventListener('wheel', preventScroll)
+      window.removeEventListener('touchmove', preventScroll)
+    }
+  }, [typingDone])
+
   // Page order, as laid out in ArticleSection.tsx — only the entries that
   // matter for this: the four nav-jumpable graph ids, and every
   // freeze-gated section that sits somewhere between them. Numbers are
@@ -242,6 +244,18 @@ function App() {
   // jumping to grades 6-8 silently pre-completed the freeze-frame section
   // and beyond, so scrolling into them later showed nothing left to
   // animate.
+  // Brief full-screen cover for NavBar jumps — hides the scroll jump and
+  // whatever settling motion the destination (and everything it passes)
+  // does on the way, rather than trying to eliminate that motion
+  // outright. Shown the instant NavBar is clicked, hidden shortly after.
+  const navCoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [navCoverVisible, setNavCoverVisible] = useState(false)
+  const triggerNavCover = () => {
+    if (navCoverTimerRef.current) clearTimeout(navCoverTimerRef.current)
+    setNavCoverVisible(true)
+    navCoverTimerRef.current = setTimeout(() => setNavCoverVisible(false), 700)
+  }
+
   const skipAnimationsUpTo = (targetId: string) => {
     const targetIndex = PAGE_ORDER[targetId] ?? Infinity
     // Hero's own intro/curtain lock only ever engages after the
@@ -274,6 +288,28 @@ function App() {
     // at once) since jumping to grades 6-8 has no business wiping out
     // progress in grades 9-12 or K-5.
     window.dispatchEvent(new CustomEvent('navResetGraphStep', { detail: { id: targetId } }))
+
+    // Tells ArticleSection.tsx's own click-based screen state to jump
+    // directly to the matching value — without this, a NavBar jump moves
+    // the page via scrollIntoView but screen never updates, which (a)
+    // leaves the destination's own isActiveScreen-gated buttons/arrow
+    // keys inactive, and (b) more seriously, can leave an earlier
+    // position:fixed overlay (Section01, GraphExplainerIntro,
+    // GraphSectionRepelAttract) still sitting at full visibility if
+    // screen never advanced past it, visibly blocking the destination
+    // the user just scrolled to. The existing ordinal-based
+    // hasPassedScreen mechanism in ArticleSection.tsx handles marking
+    // every earlier overlay correctly once screen is set here, with no
+    // per-overlay special-casing needed.
+    const NAV_ID_TO_SCREEN: Record<string, string> = {
+      'graph-elementary': 'elementary',
+      'graph-68': 'graph68',
+      'graph-912': 'graph912',
+    }
+    const targetScreen = NAV_ID_TO_SCREEN[targetId]
+    if (targetScreen) {
+      window.dispatchEvent(new CustomEvent('navBarJumpToScreen', { detail: { screen: targetScreen } }))
+    }
   }
 
   const scrollLockPos = useRef<number | null>(null)
@@ -476,6 +512,35 @@ function App() {
 
   return (
     <main>
+      <AnimatePresence>
+        {navCoverVisible && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 999998,
+              backgroundColor: 'var(--color-bg)',
+              pointerEvents: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <img
+              src="/favicon.svg"
+              style={{
+                width: 'clamp(3rem, 8vw, 4.5rem)',
+                height: 'clamp(3rem, 8vw, 4.5rem)',
+                animation: 'navCoverPulse 0.7s ease-in-out infinite',
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
       {!assetsReady && (
         <div style={{
           position: 'fixed',
@@ -643,6 +708,9 @@ function App() {
         // GraphSection68 entirely without ever reaching step 1, which
         // would otherwise leave the toggle permanently hidden.
         onGraph68Exited={() => setToggleRevealed(true)}
+        onNavigate={skipAnimationsUpTo}
+        onGoToLanding={() => setCurtainDone(false)}
+        curtainDone={curtainDone}
         graphResetSignal={graphResetSignal}
         skipSection01Signal={skipSection01Signal}
         skipSection02Signal={skipSection02Signal}
@@ -662,7 +730,7 @@ function App() {
           once mounted, relying on this gate rather than its own internal
           show/hide state for that. */}
       {curtainDone && (
-        <NavBar reachedConclusion={reachedConclusion} onNavigate={skipAnimationsUpTo} onVisibilityChange={setNavBarVisible} />
+        <NavBar reachedConclusion={reachedConclusion} onNavigate={skipAnimationsUpTo} onBeforeNavigate={triggerNavCover} onVisibilityChange={setNavBarVisible} />
       )}
 
       {/* Persistent top-right toggle — replaces the old "toggle only
@@ -674,37 +742,25 @@ function App() {
           landing page itself (gated on curtainDone, not on scroll
           position, so it can't get stuck hidden the way NavBar's own
           scroll-based detection could). The 'R' key hover hint is
-          desktop-only, moved here verbatim from NavBar.tsx.
+          desktop-only, moved here verbatim from NavBar.tsx. On desktop,
+          bumped down while NavBar is showing (navBarVisible, reported by
+          NavBar itself) so the two stack instead of overlapping — back to
+          its usual spot once NavBar hides. Mobile never sets
+          navBarVisible true (NavBar's hamburger sits in its own fixed
+          spot below this instead), so this has no effect there.
           
-          Vertical position now accounts for two independent things that
-          can each push it down, per feedback that the toggle was covering
-          graph sections' own "Click to go forward" button:
-          - navBarVisible (reported by NavBar itself): unchanged from
-            before, bumps down to clear NavBar's own hamburger spot.
-          - forwardButtonVisible (reported by whichever graph section
-            currently has its forward button on screen, see the comment
-            on that state above): bumps down to clear that button instead.
-          When BOTH are true, the graph section's own forward/back buttons
-          ALSO bump themselves down first (each section handles this
-          locally, using the same navBarVisible prop passed down through
-          ArticleSection) to clear NavBar, so the toggle then needs to
-          clear the navbar-bumped button position, not the button's normal
-          one — hence the larger BOTH_TOP value below rather than just
-          summing the two independent bumps.
-          
-          All four numeric values here are estimates — I can't measure
-          NavBar's actual height or the graph buttons' actual rendered
-          height/position from here, so this needs a live pass to confirm
-          nothing overlaps in any of the four combinations. */}
+          Used to also bump for a second reason (whichever graph section's
+          own "Click to go forward" button was on screen), but per
+          feedback those buttons moved to the bottom of the screen, so
+          they no longer compete with this at all — back to this simpler
+          two-case version. */}
       {curtainDone && toggleRevealed && (
         <div
           onMouseEnter={() => !isMobile && setTooltipVisible(true)}
           onMouseLeave={() => setTooltipVisible(false)}
           style={{
             position: 'fixed',
-            top: navBarVisible
-              ? (forwardButtonVisible ? '9rem' : '4.8rem')
-              : (forwardButtonVisible ? '5.5rem' : '1.25rem'),
+            top: navBarVisible ? '4.8rem' : '1.25rem',
             right: '1.5rem',
             zIndex: 9000,
             backgroundColor: 'rgba(250, 249, 246, 0.82)',

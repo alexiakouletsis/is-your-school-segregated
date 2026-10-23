@@ -57,10 +57,27 @@ export default function Hero({ curtainDone, onCurtainDropping, setCurtainDone, o
     }
   }, [sequenceComplete, onTypingDone])
 
+  // Bumped specifically for BlobCurtain's own explicit reset path (see
+  // its resetSignal prop and doReset), needed now that curtainDone can be
+  // forced back to false externally (Section01's "Click to go back"
+  // button) rather than only via BlobCurtain's own scroll-based
+  // detection, which can't fire once this component's container has
+  // already collapsed to height:0 (see the JSX below). Guarded against
+  // firing on initial mount (curtainDone starts false — there's nothing
+  // to reset yet) via hasMountedRef, since bumping this unconditionally
+  // would otherwise fire BlobCurtain's reset effect once, spuriously, on
+  // every fresh page load.
+  const [blobResetSignal, setBlobResetSignal] = useState(0)
+  const hasMountedRef = useRef(false)
   useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true
+      return
+    }
     if (!curtainDone) {
       setSequenceComplete(false)
       onTypingReset()
+      setBlobResetSignal(v => v + 1)
     }
   }, [curtainDone, onTypingReset])
 
@@ -195,13 +212,15 @@ export default function Hero({ curtainDone, onCurtainDropping, setCurtainDone, o
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     textAlign: 'center',
                     fontFamily: "'Gaegu', cursive",
-                    fontSize: 'clamp(1.1rem, 4.6vw, 1.5rem)',
+                    fontSize: 'clamp(0.68rem, 3vw, 0.8rem)',
+                    lineHeight: 1.15,
                     fontWeight: 700,
                     color: '#111',
                     pointerEvents: 'none',
+                    padding: '0 18%',
                     transform: 'translateY(-10px) perspective(200px) rotateX(35deg)',
                   }}>
-                    TAP ME
+                    TAP TO GO FORWARD
                   </span>
                 </div>
               </>
@@ -297,13 +316,15 @@ export default function Hero({ curtainDone, onCurtainDropping, setCurtainDone, o
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     textAlign: 'center',
                     fontFamily: "'Gaegu', cursive",
-                    fontSize: 'clamp(1.5rem, 2.25vw, 1.8rem)',
+                    fontSize: isMobile ? 'clamp(0.68rem, 3vw, 0.8rem)' : 'clamp(0.95rem, 1.5vw, 1.15rem)',
+                    lineHeight: 1.15,
                     fontWeight: 700,
                     color: '#111',
                     pointerEvents: 'none',
+                    padding: '0 18%',
                     transform: 'translateY(-21px) perspective(220px) rotateX(35deg)',
                   }}>
-                    CLICK ME
+                    {isMobile ? 'TAP TO GO FORWARD' : 'CLICK TO GO FORWARD'}
                   </span>
                 </div>
               </>
@@ -321,6 +342,7 @@ export default function Hero({ curtainDone, onCurtainDropping, setCurtainDone, o
           greenDotRef={greenDotRef as any}
           manualTrigger={manualTrigger}
           onSequenceComplete={() => setSequenceComplete(true)}
+          resetSignal={blobResetSignal}
         />
 
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import * as d3 from 'd3'
 import { motion, AnimatePresence, useScroll, useMotionValue } from 'framer-motion'
 import { useGraphSection } from '../hooks/useGraphSection'
@@ -135,7 +135,7 @@ const STEPS: { label: string, type: StepType }[] = [
 const K3_LAST_STEP = 4
 const GRADE45_START = 6
 
-export default function GraphSectionElementary({ mode, onGrade3Complete, resetSignal, onExited, navBarVisible }: {
+export default function GraphSectionElementary({ mode, onGrade3Complete, resetSignal, onExited, isActiveScreen }: {
   mode: Mode
   onGrade3Complete?: (nodes: Node[]) => void
   resetSignal?: number
@@ -145,12 +145,17 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
   // comment: the exact point the toggle should appear is still TBD, so this
   // is a placeholder trigger, easy to move to a later section once decided.
   onExited?: () => void
-  // Reported by NavBar itself, threaded down through App.tsx ->
-  // ArticleSection. Bumps this section's own "Click to go back"/"Click to
-  // go forward" buttons down to clear NavBar, matching the persistent
-  // toggle's own equivalent bump — see App.tsx's toggle-position comment
-  // for the full picture of why this needs to happen at both levels.
-  navBarVisible?: boolean
+  // Explicit, derived directly from ArticleSection's own screen state
+  // (screen==='elementary') — used ONLY to gate the arrow-key listener
+  // below, instead of the scroll-derived isVisuallyActive. That scroll-
+  // based detection can go stale relative to screen after an instant
+  // (non-smooth) scroll jump, letting multiple sections' own arrow-key
+  // listeners end up simultaneously active — which is very likely what
+  // was causing back-navigation to behave inconsistently/confusingly
+  // (e.g. back button working but the same back arrow key not, or
+  // landing somewhere unexpected). isVisuallyActive itself is untouched
+  // for its other existing uses (graphSectionActive dispatch etc).
+  isActiveScreen?: boolean
 }) {
   const [k3GraphData, setK3GraphData] = useState<(GraphData | null)[]>([null, null, null, null])
   const [grade45Data, setGrade45Data] = useState<(GraphData | null)[]>([null, null])
@@ -167,6 +172,48 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
   const dialogueTimers = useRef<ReturnType<typeof setTimeout>[]>([])
   const hasPlayedDialogue = useRef(false)
 
+  // Extracted so it can be called from TWO places: the scroll/
+  // intersection-based detection below (organic scrolling into this
+  // section), AND directly from a custom event dispatched by
+  // ArticleSection's new "Click/Tap to go forward" button on Section01
+  // (see the listener effect below this one) — that button KNOWS for
+  // certain the user is intentionally entering this section, so it
+  // doesn't need to wait on any scroll-position-based inference at all,
+  // which per feedback was proving too fragile on mobile specifically
+  // (a separate IntersectionObserver requiring 90% visibility of
+  // sectionRef, independent from entryProgress/isVisuallyAction, so
+  // tuning scroll position alone couldn't reliably satisfy both).
+  const playDialogue = useCallback(() => {
+    if (hasPlayedDialogue.current) return
+    hasPlayedDialogue.current = true
+    DIALOGUE.forEach((d, i) => {
+      const t = setTimeout(() => {
+        setVisibleBubbles(prev => { const next = [...prev]; next[i] = true; return next })
+        setBubbleTexts(prev => { const next = [...prev]; next[i] = d.text; return next })
+        if (i === DIALOGUE.length - 1) setDialogueDone(true)
+      }, d.delay + 300)
+      dialogueTimers.current.push(t)
+    })
+  }, [])
+
+  // Direct trigger for the Section01 "go forward" button — see
+  // playDialogue's own comment above for the full reasoning. Also forces
+  // isVisuallyActive and bgOpacity directly now, not just the dialogue —
+  // per feedback, both the graph-paper background AND the arrow-key
+  // listener (which depends on isVisuallyActive) were failing to
+  // activate after this button's instant scroll jump, same root cause:
+  // an instant jump doesn't reliably fire entryProgress's gradual
+  // scroll-linked update the way the smooth scroll this used to be did.
+  useEffect(() => {
+    const handler = () => {
+      playDialogue()
+      setIsVisuallyActive(true)
+      bgOpacity.set(1)
+    }
+    window.addEventListener('triggerElementaryDialogue', handler)
+    return () => window.removeEventListener('triggerElementaryDialogue', handler)
+  }, [playDialogue])
+
   const {
     currentStep, setCurrentStep, hoveredNode, setHoveredNode, graphSize,
     sectionRef, svgRef, graphPanelRef, simulationRef,
@@ -181,7 +228,13 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     // their render further down) instead of scroll — mobile is unaffected
     // either way, since it already only navigates via tap. Only this
     // section for now; GraphSection68/912 keep scroll-driven stepping.
-    disableScrollNav: true,
+    //
+    // Was passed as disableScrollNav before, a name the hook never
+    // actually defined or used — silently ignored the whole time, which
+    // is very likely why wheel/touch scroll kept triggering step changes
+    // completely independently of (and inconsistently with) the
+    // click/tap/arrow-key system built on top of it.
+    disableWheelNav: true,
   })
 
   // Mobile-only: the main graph effect below waits for this to catch up
@@ -271,40 +324,31 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     }
   }, [isVisuallyActive])
 
-  // Tells App.tsx's persistent toggle to bump down and clear this
-  // section's own "Click to go forward" button — see that file's own
-  // comment. Gated on isVisuallyActive too (not just the button's own
-  // render condition, currentStep !== STEPS.length - 1), since this
-  // component stays mounted with whatever currentStep it was last on even
-  // once the user has scrolled well past it to a different section —
-  // without that gate, this would falsely keep reporting its own forward
-  // button as active long after it's actually off-screen.
-  useEffect(() => {
-    const isForwardButtonShown = isVisuallyActive && !isMobile && currentStep !== STEPS.length - 1
-    window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'elementary', active: isForwardButtonShown } }))
-    return () => {
-      window.dispatchEvent(new CustomEvent('graphForwardButtonActive', { detail: { id: 'elementary', active: false } }))
-    }
-  }, [isVisuallyActive, isMobile, currentStep])
-
   // Left/right arrow keys mirror the "Click to go back"/"Click to go
   // forward" buttons exactly — same conditions (currentStep bounds,
-  // dialogue-skip-then-advance on step 0), same guard against acting
-  // while the user is elsewhere on the page (isVisuallyActive), desktop
-  // only (mobile has no keyboard to speak of).
+  // dialogue-skip-then-advance on step 0). Gated on isActiveScreen (see
+  // its own comment) rather than isVisuallyActive — desktop only (mobile
+  // has no keyboard to speak of).
   useEffect(() => {
-    if (isMobile || !isVisuallyActive) return
+    if (isMobile || !isActiveScreen) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') {
-        if (currentStep > 0) setCurrentStep(prev => Math.max(0, prev - 1))
+        if (currentStep === 0) {
+          window.dispatchEvent(new CustomEvent('exitElementaryToSection01'))
+          return
+        }
+        setCurrentStep(prev => Math.max(0, prev - 1))
       } else if (e.key === 'ArrowRight') {
-        if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
-        if (currentStep !== STEPS.length - 1) setCurrentStep(prev => Math.min(STEPS.length - 1, prev + 1))
+        if (currentStep === STEPS.length - 1) {
+          window.dispatchEvent(new CustomEvent('enterExplainerFromElementary'))
+          return
+        }
+        setCurrentStep(prev => Math.min(STEPS.length - 1, prev + 1))
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isMobile, isVisuallyActive, currentStep, dialogueDone])
+  }, [isMobile, isActiveScreen, currentStep, dialogueDone])
 
   const [noticeText, setNoticeText] = useState('')
   const noticeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -341,57 +385,51 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
   // types in at grade K and stays through grade 3; the grade 4-5 one
   // types in at grade 4 and now stays through grade 5 too (previously it
   // cleared immediately on reaching grade 5).
-  const K3_NOTICE_TEXT = "At this age, students typically share all of their classes with a single group of peers."
-  const GRADE45_NOTICE_TEXT = "Notice how students transition into sharing classes, rather than being isolated in individual pods."
-  const k3NoticeDoneRef = useRef(false)
-  const grade45NoticeDoneRef = useRef(false)
-  const [activeNoticeSource, setActiveNoticeSource] = useState<'k3' | 'grade45' | null>(null)
+  // Only steps 1 (grade K) and 6 (grade 4) type in — the rest of each
+  // group (steps 2/3/4 for grades 1/2/3, and step 7 for grade 5) show
+  // their own static sentence immediately, crossfaded in via
+  // AnimatePresence in the JSX below (keyed on currentStep) rather than
+  // retyped.
+  const STEP_NOTICE_TEXT: Record<number, string> = {
+    1: "At this age, students typically share all of their classes with a single group of peers.",
+    2: "Grade 1 looks much the same \u2014 one teacher, one classroom, the same faces all day.",
+    3: "By grade 2, that single-classroom model still hasn't started to shift.",
+    4: "Grade 3 is the last year of this pattern. Starting in grade 4, that begins to change.",
+    6: "Notice how students transition into sharing classes, rather than being isolated in individual pods.",
+    7: "That trend continues into grade 5, with students now passing through several distinct classes a day.",
+  }
+  const TYPED_STEPS = new Set([1, 6])
+  const typedStepDoneRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (currentStep >= 1 && currentStep <= K3_LAST_STEP) {
-      if (!k3NoticeDoneRef.current) {
-        k3NoticeDoneRef.current = true
-        setActiveNoticeSource('k3')
-        setNoticeText('')
-        let i = 0
-        clearInterval(noticeIntervalRef.current!)
-        noticeIntervalRef.current = setInterval(() => {
-          i++
-          setNoticeText(K3_NOTICE_TEXT.slice(0, i))
-          if (i >= K3_NOTICE_TEXT.length) clearInterval(noticeIntervalRef.current!)
-        }, 22)
-      }
-    } else {
-      k3NoticeDoneRef.current = false
-    }
-
-    if (currentStep >= GRADE45_START) {
-      if (!grade45NoticeDoneRef.current) {
-        grade45NoticeDoneRef.current = true
-        setActiveNoticeSource('grade45')
-        setNoticeText('')
-        let i = 0
-        clearInterval(noticeIntervalRef.current!)
-        noticeIntervalRef.current = setInterval(() => {
-          i++
-          setNoticeText(GRADE45_NOTICE_TEXT.slice(0, i))
-          if (i >= GRADE45_NOTICE_TEXT.length) clearInterval(noticeIntervalRef.current!)
-        }, 22)
-      }
-    } else {
-      grade45NoticeDoneRef.current = false
-    }
-
-    // Neither range active (step 0, or the text step) — clear whichever
-    // was showing.
-    if (!(currentStep >= 1 && currentStep <= K3_LAST_STEP) && currentStep < GRADE45_START) {
+    const target = STEP_NOTICE_TEXT[currentStep]
+    if (target === undefined) {
       clearInterval(noticeIntervalRef.current!)
       setNoticeText('')
-      setActiveNoticeSource(null)
+      typedStepDoneRef.current = null
+      return
     }
+    if (!TYPED_STEPS.has(currentStep)) {
+      // Fade steps — no typing, show the full sentence immediately. The
+      // crossfade itself is handled by AnimatePresence in the JSX below.
+      clearInterval(noticeIntervalRef.current!)
+      setNoticeText(target)
+      return
+    }
+    // Typed steps — only type once per arrival at this exact step.
+    if (typedStepDoneRef.current === currentStep) return
+    typedStepDoneRef.current = currentStep
+    setNoticeText('')
+    let i = 0
+    clearInterval(noticeIntervalRef.current!)
+    noticeIntervalRef.current = setInterval(() => {
+      i++
+      setNoticeText(target.slice(0, i))
+      if (i >= target.length) clearInterval(noticeIntervalRef.current!)
+    }, 22)
   }, [currentStep])
 
-  const activeNoticeFullText = activeNoticeSource === 'k3' ? K3_NOTICE_TEXT : activeNoticeSource === 'grade45' ? GRADE45_NOTICE_TEXT : ''
+  const activeNoticeFullText = STEP_NOTICE_TEXT[currentStep] ?? ''
 
   // Single-class step (0) dialogue — copied from GraphSection68's own
   // trigger pattern: mobile uses an IntersectionObserver (this section is
@@ -414,18 +452,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     if (hasPlayedDialogue.current) return
     if (!sectionRef.current) return
 
-    const play = () => {
-      if (hasPlayedDialogue.current) return
-      hasPlayedDialogue.current = true
-      DIALOGUE.forEach((d, i) => {
-        const t = setTimeout(() => {
-          setVisibleBubbles(prev => { const next = [...prev]; next[i] = true; return next })
-          setBubbleTexts(prev => { const next = [...prev]; next[i] = d.text; return next })
-          if (i === DIALOGUE.length - 1) setDialogueDone(true)
-        }, d.delay + 300)
-        dialogueTimers.current.push(t)
-      })
-    }
+    const play = playDialogue
 
     if (isMobile) {
       const observer = new IntersectionObserver((entries) => {
@@ -467,14 +494,6 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     }
   }, [currentStep, isMobile])
 
-  const skipDialogue = () => {
-    if (currentStep !== 0 || dialogueDone) return
-    dialogueTimers.current.forEach(t => clearTimeout(t))
-    setVisibleBubbles([true, true, true])
-    setBubbleTexts(DIALOGUE.map(d => d.text))
-    setDialogueDone(true)
-  }
-
   const bubbleColorHigh = mode === 'race' ? '#FF9260' : '#FF8BDE'
   const bubbleColorLow = mode === 'race' ? '#8BA4FF' : '#22D880'
 
@@ -504,7 +523,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
   // step here uses the normal radius.
   useEffect(() => {
     if (!svgRef.current) return
-    applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current, currentStep === 0)
+    applyHoverHighlight(d3.select(svgRef.current), hoveredNode, activeEdgesRef.current, currentStep === 0, true)
     d3.select(svgRef.current).selectAll<SVGCircleElement, Node>('circle.protagonist-border')
       .attr('r', faceSizeForStep(currentStep) * BORDER_RATIO)
   }, [hoveredNode, currentStep])
@@ -915,10 +934,14 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
             <div style={{ position: 'absolute', top: '3%', bottom: '3%', left: '1rem', right: '1rem', backgroundColor: 'rgba(250, 249, 246, 0.82)', borderRadius: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', zIndex: 0 }} />
           )}
           {!isMobile && noticeText && (
-            <p style={{ position: 'absolute', top: '6rem', left: '3rem', right: '2rem', zIndex: 1, fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
-              {noticeText}
-              {noticeText.length < activeNoticeFullText.length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
-            </p>
+            <AnimatePresence mode="wait">
+              <motion.p key={currentStep}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
+                style={{ position: 'absolute', top: '6rem', left: '3rem', right: '2rem', zIndex: 1, fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                {noticeText}
+                {noticeText.length < activeNoticeFullText.length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
+              </motion.p>
+            </AnimatePresence>
           )}
           <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: isMobile ? 'center' : 'flex-start', width: '100%' }}>
             <div style={{
@@ -941,7 +964,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
                       some mobile browsers otherwise default to for this
                       character. Placeholder for now — easy to swap for a
                       custom SVG later if this doesn't read well. */}
-                  {isTextStep ? '\u23F8\uFE0E' : STEPS[currentStep].label}
+                  {isTextStep ? (isMobile ? '\u23F8\uFE0E' : 'Read text to the right \u2192') : STEPS[currentStep].label}
                 </motion.p>
               </AnimatePresence>
             </div>
@@ -983,21 +1006,23 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
         <div
           ref={graphPanelRef}
           onClick={(e) => {
-            // Skip the dialogue on tap/click, same on every platform.
-            if (currentStep === 0 && !dialogueDone) {
-              skipDialogue()
+            if (!isMobile) return
+            // Used to unconditionally advance to step 1 on ANY tap here,
+            // which meant tapping the left half (meant to go back) did
+            // nothing useful — it just advanced anyway, same as the
+            // right half. Now checks which half was tapped, same as
+            // every other step below: left goes back to Section01 (this
+            // is the first step, there's nothing earlier WITHIN this
+            // section to go back to), right advances to step 1 —
+            // regardless of dialogueDone, per feedback not to block
+            // progression while the dialogue is still playing.
+            if (currentStep === 0) {
+              const rect0 = graphPanelRef.current?.getBoundingClientRect()
+              const isRightHalf0 = rect0 ? (e.clientX - rect0.left > rect0.width / 2) : true
+              if (isRightHalf0) setCurrentStep(1)
+              else window.dispatchEvent(new CustomEvent('exitElementaryToSection01'))
               return
             }
-            if (!isMobile) return
-            // By this point dialogueDone is guaranteed true (the check
-            // above already returned for the not-done case) — this used
-            // to just `return` unconditionally, which on mobile was a
-            // dead end: the wheel/touch-swipe handlers that would
-            // normally advance currentStep are skipped entirely on
-            // mobile (see useGraphSection.ts), so tap is the ONLY
-            // mechanism mobile has to move forward at all, and this line
-            // blocked the very first tap needed to leave the dialogue.
-            if (currentStep === 0) { setCurrentStep(1); return }
             if (!isTextStep) {
               const target = e.target as Element
               if (target.tagName === 'circle' || target.tagName === 'image') {
@@ -1038,7 +1063,11 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
             if (!rect) return
             const isRightHalf = e.clientX - rect.left > rect.width / 2
             if (isRightHalf) {
-              if (currentStep < STEPS.length - 1) setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
+              if (currentStep === STEPS.length - 1) {
+                window.dispatchEvent(new CustomEvent('enterExplainerFromElementary'))
+              } else {
+                setCurrentStep(s => Math.min(STEPS.length - 1, s + 1))
+              }
             } else {
               if (currentStep > 0) setCurrentStep(s => Math.max(0, s - 1))
             }
@@ -1049,14 +1078,21 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               right of the left panel (i.e. inside the graph panel itself,
               at its top-left corner), not floating within the left panel
               — per feedback, it needs to sit past that boundary, not just
-              near it. Hidden entirely on step 0, since there's nowhere to
-              go back to. No cursor override — the site has its own custom
-              cursor SVG that the browser's default pointer/hand icon
-              would otherwise cover up on hover. */}
-          {!isMobile && currentStep > 0 && (
+              near it. No longer hidden on step 0 — as part of converting
+              the whole site to click-based navigation (Phase 1: Section01
+              <-> here), step 0's back button now goes back to Section01
+              instead of having nowhere to go. No cursor override — the
+              site has its own custom cursor SVG that the browser's
+              default pointer/hand icon would otherwise cover up on
+              hover. */}
+          {!isMobile && (
             <motion.div
               onClick={(e) => {
                 e.stopPropagation()
+                if (currentStep === 0) {
+                  window.dispatchEvent(new CustomEvent('exitElementaryToSection01'))
+                  return
+                }
                 setCurrentStep(prev => Math.max(0, prev - 1))
               }}
               onMouseEnter={() => setBackHovered(true)}
@@ -1064,7 +1100,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
-                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', left: '1rem', zIndex: 5,
+                position: 'absolute', bottom: '1.5rem', left: '1rem', zIndex: 5,
                 fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
                 backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
@@ -1073,8 +1109,8 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               ← Click to go back
               {backHovered && (
                 <div style={{
-                  position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                  marginTop: '0.45rem', backgroundColor: '#111', color: '#fff',
+                  position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+                  marginBottom: '0.45rem', backgroundColor: '#111', color: '#fff',
                   padding: '0.32rem 0.65rem', borderRadius: '6px', fontSize: '0.68rem',
                   whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 9500,
                 }}>
@@ -1086,16 +1122,19 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
           {/* Desktop-only "Click to go forward" — see the matching "Click
               to go back" comment just above. Mirrors the same dialogue-
               skip-then-advance behavior mobile's own tap-to-advance
-              already has on step 0. Hidden entirely on the last step, full
-              stop — no longer conditioned on dialogueDone too, since that
-              left a loophole where it could still show up if that flag
-              wasn't true yet for some reason. No cursor override, same
-              reasoning as the back button. */}
-          {!isMobile && currentStep !== STEPS.length - 1 && (
+              already has on step 0. No longer hidden on the last step —
+              per the click-based-navigation conversion, it now
+              transitions into GraphExplainerIntro's own new sliding
+              overlay instead of having nowhere to go. No cursor
+              override, same reasoning as the back button. */}
+          {!isMobile && (
             <motion.div
               onClick={(e) => {
                 e.stopPropagation()
-                if (currentStep === 0 && !dialogueDone) { skipDialogue(); return }
+                if (currentStep === STEPS.length - 1) {
+                  window.dispatchEvent(new CustomEvent('enterExplainerFromElementary'))
+                  return
+                }
                 setCurrentStep(prev => Math.min(STEPS.length - 1, prev + 1))
               }}
               onMouseEnter={() => setForwardHovered(true)}
@@ -1103,7 +1142,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.15 }}
               style={{
-                position: 'absolute', top: navBarVisible ? '5.05rem' : '1.5rem', right: '1rem', zIndex: 5,
+                position: 'absolute', bottom: '1.5rem', right: '1rem', zIndex: 5,
                 fontFamily: "'Kiwi Maru', serif", fontSize: '1.05rem', color: '#111',
                 backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.55rem 1.1rem', borderRadius: '16px',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
@@ -1112,8 +1151,8 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
               Click to go forward →
               {forwardHovered && (
                 <div style={{
-                  position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                  marginTop: '0.45rem', backgroundColor: '#111', color: '#fff',
+                  position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+                  marginBottom: '0.45rem', backgroundColor: '#111', color: '#fff',
                   padding: '0.32rem 0.65rem', borderRadius: '6px', fontSize: '0.68rem',
                   whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 9500,
                 }}>
@@ -1233,26 +1272,22 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
 
           {isMobile && (
             <>
-              {currentStep > 0 && (
-                <div style={{
-                  position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 5, pointerEvents: 'none',
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                  fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
-                  backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
-                }}>
-                  ← Tap to go back
-                </div>
-              )}
-              {!(currentStep === 0 && !dialogueDone) && currentStep < STEPS.length - 1 && (
-                <div style={{
-                  position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 5, pointerEvents: 'none',
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                  fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
-                  backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
-                }}>
-                  Tap to go forward →
-                </div>
-              )}
+              <div style={{
+                position: 'absolute', top: '0.6rem', left: '0.6rem', zIndex: 5, pointerEvents: 'none',
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+              }}>
+                ← Tap to go back
+              </div>
+              <div style={{
+                position: 'absolute', top: '0.6rem', right: '0.6rem', zIndex: 5, pointerEvents: 'none',
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.55rem, 2.2vw, 0.68rem)', color: '#111',
+                backgroundColor: 'rgba(250,249,246,0.85)', padding: '0.25rem 0.5rem', borderRadius: '999px',
+              }}>
+                Tap to go forward →
+              </div>
               <div style={{ position: 'absolute', bottom: '2.6rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.4rem' }}>
                 {STEPS.map((_, i) => (
                   <div key={i} style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: i === currentStep ? '#111' : '#ccc', transition: 'background-color 0.3s ease' }} />
