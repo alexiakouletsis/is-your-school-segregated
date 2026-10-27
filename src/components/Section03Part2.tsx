@@ -199,7 +199,7 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverla
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          padding: isMobile ? '5rem 1.5rem 8.5rem 1.5rem' : '6rem 2rem 9rem 2rem',
+          padding: isMobile ? '5.2rem 1.5rem 8.5rem 1.5rem' : '7rem 2rem 9rem 2rem',
           gap: isMobile ? '1.3rem' : '2.7rem',
         }}
       >
@@ -263,11 +263,13 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverla
           <img src={dot1Src} style={{
             width: isMobile ? 'clamp(100px, 26vw, 150px)' : 'clamp(130px, 18vw, 220px)',
             height: 'auto',
+            aspectRatio: '1 / 1',
             animation: 'bob 2s ease-in-out infinite',
           }} />
           <img src={dot2Src} style={{
             width: isMobile ? 'clamp(100px, 26vw, 150px)' : 'clamp(130px, 18vw, 220px)',
             height: 'auto',
+            aspectRatio: '1 / 1',
             animation: 'bob 2s ease-in-out infinite',
             animationDelay: '0.4s',
           }} />

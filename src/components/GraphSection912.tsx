@@ -401,7 +401,6 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen, pas
   const [allGraphData, setAllGraphData] = useState<(GraphData | null)[]>([null, null, null, null])
   const [noticeText, setNoticeText] = useState('')
   const noticeTargetRef = useRef('')
-  const noticeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // The TRUE full-population node list per step (pre-sampling) — NodeStats
   // always reports real percentages regardless of how many nodes actually
   // got rendered/simulated.
@@ -939,7 +938,6 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen, pas
     if (currentStep === 0) {
       // The dialogue step should never show leftover notice text from
       // grade 9 — returning to the dialogue always clears it.
-      clearInterval(noticeIntervalRef.current!)
       noticeTargetRef.current = ''
       setNoticeText('')
       return
@@ -947,20 +945,10 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen, pas
     const target = getNoticeTarget(currentStep)
     if (target === noticeTargetRef.current) return
     noticeTargetRef.current = target
-    clearInterval(noticeIntervalRef.current!)
-    if (currentStep !== 1) {
-      // Grades 10/11/12 — show immediately, no typing. The crossfade
-      // itself is handled by AnimatePresence in the JSX below.
-      setNoticeText(target)
-      return
-    }
-    setNoticeText('')
-    let i = 0
-    noticeIntervalRef.current = setInterval(() => {
-      i++
-      setNoticeText(target.slice(0, i))
-      if (i >= target.length) clearInterval(noticeIntervalRef.current!)
-    }, 22)
+    // Every grade (9 included) shows its sentence immediately now — no
+    // typing anywhere in this section. The crossfade itself is handled
+    // by AnimatePresence in the JSX below.
+    setNoticeText(target)
   }, [currentStep, hasEnteredSection])
 
   // main graph effect
@@ -1338,28 +1326,16 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen, pas
   }, [currentStep, deferredStep, allGraphData, graphSize, mode, isMobile])
 
   const renderNoticeContent = () => {
-    const target = getNoticeTarget(currentStep)
     if (!noticeText) return null
-    return (
-      <>
-        {noticeText}
-        {noticeText.length < target.length && (
-          <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />
-        )}
-      </>
-    )
+    return <>{noticeText}</>
   }
 
-  // Click-to-skip for whatever's currently typing: the current step's
-  // notice sentence, and NodeStats' own entrance sequence (via
-  // skipTypingSignal, consumed as its skipSignal prop). Safe to call even
-  // when nothing is actively typing.
+  // Click-to-skip for NodeStats' own entrance sequence (via
+  // skipTypingSignal, consumed as its skipSignal prop) — the notice
+  // sentence no longer types at all, so there's nothing left for this to
+  // skip ahead for that. Safe to call even when nothing is actively
+  // typing.
   const skipTyping = () => {
-    const target = getNoticeTarget(currentStep)
-    if (target !== '' && noticeText.length < target.length) {
-      clearInterval(noticeIntervalRef.current!)
-      setNoticeText(target)
-    }
     setSkipTypingSignal(s => s + 1)
   }
 
@@ -1448,7 +1424,7 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen, pas
                 {noticeText && (
                   <AnimatePresence mode="wait">
                     <motion.p key={currentStep}
-                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
+                      initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.6, ease: 'easeOut' }}
                       style={{
                         fontFamily: "'Kiwi Maru', serif",
                         // Every step now has its own dedicated text with
@@ -1573,7 +1549,7 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen, pas
             <div style={{ position: 'absolute', top: '2.2rem', left: '10%', right: '10%', zIndex: 5, padding: '0.6rem 1rem', backgroundColor: 'rgba(250,249,246,0.92)', borderRadius: '8px' }}>
               <AnimatePresence mode="wait">
                 <motion.p key={currentStep}
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
+                  initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.6, ease: 'easeOut' }}
                   style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.6rem, 2.5vw, 0.75rem)', color: '#111', lineHeight: 1.5, margin: 0, textAlign: 'center' }}>
                   {renderNoticeContent()}
                 </motion.p>

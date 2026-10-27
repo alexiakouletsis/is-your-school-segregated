@@ -191,13 +191,11 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
   // in the browser's Network tab.
   const [allGraphData, setAllGraphData] = useState<(GraphData | null)[]>([null, null, null, null])
   const [noticeText, setNoticeText] = useState('')
-  const noticeTargetRef = useRef('') // which target sentence is currently typed/typing
-  const noticeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Steps 2-4's text: types the prefix+first suffix once on entering the alt
-  // group, then switches to "static prefix + crossfading suffix" mode.
+  const noticeTargetRef = useRef('') // which target sentence is currently shown
+  // Steps 2-4's text: shows the prefix+first suffix immediately on entering
+  // the alt group, then switches to "static prefix + crossfading suffix" mode.
   const [altTypedText, setAltTypedText] = useState('')
   const [altTypingDone, setAltTypingDone] = useState(false)
-  const altIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const wasInAltGroupRef = useRef(false)
   const [visibleBubbles, setVisibleBubbles] = useState<boolean[]>([false, false, false])
   const [bubbleTexts, setBubbleTexts] = useState<string[]>(['', '', ''])
@@ -499,59 +497,38 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     }
   }, [currentStep, isMobile])
 
-  // notice text — step 1's standalone sentence only. Types once on
-  // arriving at step 1, clears when leaving back to step 0.
+  // notice text — step 1's standalone sentence only. Shown immediately
+  // now (no more typing — see this file's alt-group effect below for the
+  // same change and its full reasoning), clears when leaving back to
+  // step 0.
   useEffect(() => {
     const target = getNoticeTarget(currentStep)
-    if (target === '') {
-      noticeTargetRef.current = ''
-      clearInterval(noticeIntervalRef.current!)
-      setNoticeText('')
-      return
-    }
-    if (target === noticeTargetRef.current) return
     noticeTargetRef.current = target
-    clearInterval(noticeIntervalRef.current!)
-    setNoticeText('')
-    let i = 0
-    noticeIntervalRef.current = setInterval(() => {
-      i++
-      setNoticeText(target.slice(0, i))
-      if (i >= target.length) clearInterval(noticeIntervalRef.current!)
-    }, 10)
+    setNoticeText(target)
   }, [currentStep])
 
-  // alt-group text — types the full "And this is what 6th grade..." sentence
-  // once on first arriving at step 2, then hands off to static rendering
-  // (see JSX below): the "And this is what " prefix stays put as plain text,
-  // and only the suffix crossfades via AnimatePresence as currentStep moves
-  // between 2/3/4, rather than retyping the whole sentence each time.
+  // alt-group text — shows the full "And this is what 6th grade..."
+  // sentence immediately now (no more typing it out — per feedback from
+  // Alvin Chang that animating text at the same time as the diagram
+  // asks users to look in too many places), then hands off to static
+  // rendering (see JSX below): the "And this is what " prefix stays put
+  // as plain text, and only the suffix crossfades via AnimatePresence as
+  // currentStep moves between 2/3/4.
   useEffect(() => {
     const inAltGroup = currentStep >= 3
     if (!inAltGroup) {
       if (wasInAltGroupRef.current) {
-        clearInterval(altIntervalRef.current!)
         setAltTypedText('')
         setAltTypingDone(false)
       }
       wasInAltGroupRef.current = false
       return
     }
-    if (wasInAltGroupRef.current) return // already in the group — crossfade handles step changes, no retyping
+    if (wasInAltGroupRef.current) return
     wasInAltGroupRef.current = true
     const fullText = ALT_TEXT_PREFIX + (isMobile ? ALT_TEXT_SUFFIX_MOBILE : ALT_TEXT_SUFFIX_DESKTOP)[3]
-    clearInterval(altIntervalRef.current!)
-    setAltTypedText('')
-    setAltTypingDone(false)
-    let i = 0
-    altIntervalRef.current = setInterval(() => {
-      i++
-      setAltTypedText(fullText.slice(0, i))
-      if (i >= fullText.length) {
-        clearInterval(altIntervalRef.current!)
-        setAltTypingDone(true)
-      }
-    }, 10)
+    setAltTypedText(fullText)
+    setAltTypingDone(true)
   }, [currentStep, isMobile])
 
   // load data
@@ -896,30 +873,17 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
   const renderNoticeContent = () => {
     if (currentStep === 2) {
       if (!noticeText) return null
-      return (
-        <>
-          {noticeText}
-          {noticeText.length < TRACKING_LOW_TEXT.length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
-        </>
-      )
+      return <>{noticeText}</>
     }
     if (currentStep >= 3) {
-      if (!altTypingDone) {
-        if (!altTypedText) return null
-        return (
-          <>
-            {altTypedText}
-            {altTypedText.length < (ALT_TEXT_PREFIX + (isMobile ? ALT_TEXT_SUFFIX_MOBILE : ALT_TEXT_SUFFIX_DESKTOP)[3]).length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
-          </>
-        )
-      }
+      if (!altTypedText) return null
       return (
         <>
           {ALT_TEXT_PREFIX}
           <AnimatePresence mode="wait">
             <motion.span key={currentStep}
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.35 }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
               style={{ display: 'inline' }}
             >
               {(isMobile ? ALT_TEXT_SUFFIX_MOBILE : ALT_TEXT_SUFFIX_DESKTOP)[currentStep]}
@@ -931,21 +895,12 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
     return null
   }
 
-  // Click-to-skip for whatever's currently typing: step 1's standalone
-  // notice, steps 2-4's alt-school sentence (only actually typing the
-  // first time that group is entered), and NodeStats' own entrance
-  // sequence (via skipTypingSignal, consumed as its skipSignal prop).
-  // Safe to call even when nothing is actively typing.
+  // Click-to-skip for NodeStats' own entrance sequence (via
+  // skipTypingSignal, consumed as its skipSignal prop) — the step 1/2
+  // notice and the steps 3-5 alt-school sentence no longer type at all,
+  // so there's nothing left for this to skip ahead for those. Safe to
+  // call even when nothing is actively typing.
   const skipTyping = () => {
-    if (currentStep === 2 && noticeText.length < TRACKING_LOW_TEXT.length) {
-      clearInterval(noticeIntervalRef.current!)
-      setNoticeText(TRACKING_LOW_TEXT)
-    }
-    if (currentStep >= 3 && !altTypingDone) {
-      clearInterval(altIntervalRef.current!)
-      setAltTypedText(ALT_TEXT_PREFIX + (isMobile ? ALT_TEXT_SUFFIX_MOBILE : ALT_TEXT_SUFFIX_DESKTOP)[3])
-      setAltTypingDone(true)
-    }
     setSkipTypingSignal(s => s + 1)
   }
 
@@ -1052,9 +1007,14 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
                   runs. */}
               <div style={{ height: '11.5rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
                 {(currentStep === 2 ? noticeText : altTypedText || altTypingDone) && (
-                  <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
-                    {renderNoticeContent()}
-                  </p>
+                  <AnimatePresence mode="wait">
+                    <motion.p key={currentStep === 2 ? 'step2' : 'altgroup'}
+                      initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
+                      transition={{ duration: 0.6, ease: 'easeOut' }}
+                      style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1rem, 1.8vw, 1.4rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                      {renderNoticeContent()}
+                    </motion.p>
+                  </AnimatePresence>
                 )}
               </div>
               <div style={{ flex: 1 }} />

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useIsMobile } from '../hooks/useIsMobile'
 import type { Mode } from '../App'
 
@@ -48,7 +48,6 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
   // plays once the user actually taps.
   const [mobileTapped, setMobileTapped] = useState(false)
   const [mobileOpenProgress, setMobileOpenProgress] = useState(0)
-  const [wallClosed, setWallClosed] = useState(false)
   const mobileTappedRef = useRef(false)
   const wallClosedRef = useRef(false)
 
@@ -72,20 +71,7 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
       const containerHeight = containerRef.current.offsetHeight
       const next = Math.max(0, Math.min(1, (-rect.top) / (containerHeight - window.innerHeight)))
       setP(next)
-      if (isMobile) {
-        // Mobile: rather than a fraction of container height (which
-        // depends on containerHeight/window.innerHeight resolving the way
-        // we expect — exactly the kind of vh-based assumption that's
-        // burned us before), check the container's raw pixel position
-        // directly. rect.top <= -40 means the container has scrolled up
-        // by a small, fixed, unambiguous 40px past reaching the viewport
-        // top — the tap prompt should appear almost immediately, not
-        // require a large or uncertain scroll distance.
-        if (rect.top <= -15 && !wallClosedRef.current) {
-          wallClosedRef.current = true
-          setWallClosed(true)
-        }
-      } else if (next >= 0.9 && !hasSettledRef.current) {
+      if (!isMobile && next >= 0.9 && !hasSettledRef.current) {
         // Was next >= 1 — freezing at the literal end of the scroll range
         // gave momentum scroll zero buffer to settle in before the lock
         // engaged, so it fought the lock for a frame or two right at the
@@ -117,28 +103,6 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
     window.addEventListener('touchmove', handleTouchMove, { passive: false })
     return () => window.removeEventListener('touchmove', handleTouchMove)
   }, [isMobile])
-
-  // Mobile: on tap, animate the open progress over a fixed duration (not
-  // scroll-driven anymore, since scroll is now blocked) — mirroring what
-  // scroll does on desktop.
-  const handleMobileTap = () => {
-    if (mobileTappedRef.current) return
-    mobileTappedRef.current = true
-    setMobileTapped(true)
-    const start = Date.now()
-    const DURATION = 950
-    const tick = () => {
-      const t = Math.min(1, (Date.now() - start) / DURATION)
-      setMobileOpenProgress(t)
-      if (t < 1) {
-        requestAnimationFrame(tick)
-      } else if (!hasSettledRef.current) {
-        hasSettledRef.current = true
-        setSettled(true)
-      }
-    }
-    requestAnimationFrame(tick)
-  }
 
   const skipAll = useCallback(() => {
     if (settled) return
@@ -213,7 +177,6 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
       setMobileTapped(false)
       setMobileOpenProgress(0)
       wallClosedRef.current = false
-      setWallClosed(false)
     }
     prevIsActiveScreenRef.current = isActiveScreen
   }, [isActiveScreen])
@@ -510,54 +473,6 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
           />
         </div>
 
-        {/* Mobile-only tap-to-open prompt — appears once the wall has
-            scrolled fully closed, fades smoothly in/out rather than
-            popping abruptly. */}
-        <AnimatePresence>
-          {isMobile && wallClosed && !mobileTapped && (
-            <motion.div
-              key="tap-prompt"
-              onClick={handleMobileTap}
-              onTouchEnd={(e) => { e.preventDefault(); handleMobileTap() }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.4, ease: 'easeOut' }}
-              style={{
-                position: 'absolute',
-                inset: 0,
-                zIndex: 40,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.4, delay: 0.1, ease: 'easeOut' }}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '0.6rem',
-                  padding: '1rem 1.6rem',
-                  borderRadius: '999px',
-                  backgroundColor: 'rgba(250,249,246,0.9)',
-                }}>
-                <img src="/assets/tap-icon.svg" style={{ width: '2rem', height: 'auto' }} />
-                <span style={{
-                  fontFamily: "'Gaegu', cursive",
-                  fontSize: '1.3rem',
-                  color: '#111',
-                }}>
-                  tap
-                </span>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
         {!isMobile && settled && (
           <motion.div
             onClick={(e) => { e.stopPropagation(); goBack() }}

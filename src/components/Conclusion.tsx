@@ -98,7 +98,7 @@ function renderAlternating(text: string, colorA: string, colorB: string) {
   ))
 }
 
-const PARA_BEFORE = "School integration has been proven to help disrupt concentrations of poverty and enhance academic outcomes. Yet, within-school segregation is typically a subject that flies under the radar. Putting visuals to the data patterns, talking about the problem, and having empathy for each student in these networks-and nurturing their potential-is how we can truly make a difference. A more connected future can only be achieved by dissolving the walls we have implicitly held for so long. "
+const PARA_BEFORE = "School integration has been proven to help disrupt concentrations of poverty and enhance academic outcomes. Yet, within-school segregation is typically a subject that flies under the radar. Putting visuals to the data patterns, talking about the problem, and having empathy for each student in these networks\u2014and nurturing their potential\u2014is how we can truly make a difference. A more connected future can only be achieved by dissolving the walls we have implicitly held for so long. "
 const PARA_ACCENT = "Genuine connection"
 const PARA_AFTER = " starts by sharing a space."
 const PARA_FULL = PARA_BEFORE + PARA_ACCENT + PARA_AFTER
@@ -122,21 +122,21 @@ const DIALOGUE_LINES: DialogueLine[] = [
       { text: '', color: 'high' },
       { text: "!? I haven't seen you since freshman year of high school!", color: null },
     ],
-    delay: 1400,
+    delay: 1150,
   },
   {
     speaker: 'high',
     segments: [
       { text: "Yeah, I guess we just... grew apart. Can we get coffee and catch up?", color: null },
     ],
-    delay: 2900,
+    delay: 2300,
   },
   {
     speaker: 'low',
     segments: [
       { text: "Absolutely!", color: null },
     ],
-    delay: 4200,
+    delay: 3450,
   },
 ]
 
@@ -145,10 +145,10 @@ const getDialogueName = (mode: Mode, who: 'high' | 'low') => {
   return who === 'high' ? 'Pink' : 'Green'
 }
 
-const INFO_BEFORE = "For more information similar subjects, click "
+const INFO_BEFORE = "For more information on similar subjects, click "
 const INFO_HERE = "here"
 const INFO_MIDDLE = " to see "
-const INFO_LINK = "Plural Connection Group's other research projects"
+const INFO_LINK = "Plural Connections Group's other research projects"
 const INFO_AFTER = "."
 const INFO_FULL = INFO_BEFORE + INFO_HERE + INFO_MIDDLE + INFO_LINK + INFO_AFTER
 
@@ -1080,7 +1080,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
               lineHeight: 1.8,
               width: '100%',
               textAlign: 'center',
-              margin: 0,
+              margin: isMobile ? '0.5rem 0 0 0' : '1.2rem 0 0 0',
             }}>
               {renderPara(PARA_FULL)}
             </p>
@@ -1094,7 +1094,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
               justifyContent: 'center',
               gap: isMobile ? '0.7rem' : '1.5rem',
               width: '100%', maxWidth: '760px', flexShrink: 0,
-              marginTop: isMobile ? '1rem' : '-5.6rem',
+              marginTop: isMobile ? '0.5rem' : '-6.35rem',
               position: 'relative',
               zIndex: 2,
               ...(isMobile ? {} : { transform: 'translateX(20px)' }),
@@ -1148,7 +1148,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             maxWidth: isMobile ? undefined : '1650px',
             padding: isMobile ? 0 : '0',
             flexShrink: 0,
-            marginTop: isMobile ? '-0.3rem' : '1.8rem',
+            marginTop: isMobile ? '-0.6rem' : '1.5rem',
             position: 'relative',
             zIndex: 1,
           }}>

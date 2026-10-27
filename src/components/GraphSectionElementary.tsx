@@ -103,7 +103,7 @@ const isSpeechOnly = (n: Node): boolean => {
 // can be colored, matching the site's established convention for these
 // words elsewhere.
 const SES_PARA2_SEGMENTS: { text: string, color: string | null }[] = [
-  { text: "Now that students are manually placed into shared classes rather than being randomly grouped, affluency gaps begin to take form. For this story, let's say that because our ", color: null },
+  { text: "Now that students are manually placed into shared classes rather than being randomly grouped, affluence gaps begin to take form. For this story, let's say that because our ", color: null },
   { text: "pink", color: 'var(--color-high-ses)' },
   { text: " friend has access to more resources, ", color: null },
   { text: "pink", color: 'var(--color-high-ses)' },
@@ -351,7 +351,6 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
   }, [isMobile, isActiveScreen, currentStep, dialogueDone])
 
   const [noticeText, setNoticeText] = useState('')
-  const noticeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const isFirstResetRender = useRef(true)
   useEffect(() => {
@@ -385,11 +384,12 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
   // types in at grade K and stays through grade 3; the grade 4-5 one
   // types in at grade 4 and now stays through grade 5 too (previously it
   // cleared immediately on reaching grade 5).
-  // Only steps 1 (grade K) and 6 (grade 4) type in — the rest of each
-  // group (steps 2/3/4 for grades 1/2/3, and step 7 for grade 5) show
-  // their own static sentence immediately, crossfaded in via
-  // AnimatePresence in the JSX below (keyed on currentStep) rather than
-  // retyped.
+  // Every step's own sentence just appears immediately — no typing
+  // anywhere now (removed per feedback: "animate text or animate
+  // diagram, not both" — with the diagram itself animating as the user
+  // advances, a simultaneously-typing text competed for attention). The
+  // crossfade itself is handled by AnimatePresence in the JSX below,
+  // keyed on currentStep.
   const STEP_NOTICE_TEXT: Record<number, string> = {
     1: "At this age, students typically share all of their classes with a single group of peers.",
     2: "Grade 1 looks much the same \u2014 one teacher, one classroom, the same faces all day.",
@@ -398,38 +398,11 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
     6: "Notice how students transition into sharing classes, rather than being isolated in individual pods.",
     7: "That trend continues into grade 5, with students now passing through several distinct classes a day.",
   }
-  const TYPED_STEPS = new Set([1, 6])
-  const typedStepDoneRef = useRef<number | null>(null)
 
   useEffect(() => {
     const target = STEP_NOTICE_TEXT[currentStep]
-    if (target === undefined) {
-      clearInterval(noticeIntervalRef.current!)
-      setNoticeText('')
-      typedStepDoneRef.current = null
-      return
-    }
-    if (!TYPED_STEPS.has(currentStep)) {
-      // Fade steps — no typing, show the full sentence immediately. The
-      // crossfade itself is handled by AnimatePresence in the JSX below.
-      clearInterval(noticeIntervalRef.current!)
-      setNoticeText(target)
-      return
-    }
-    // Typed steps — only type once per arrival at this exact step.
-    if (typedStepDoneRef.current === currentStep) return
-    typedStepDoneRef.current = currentStep
-    setNoticeText('')
-    let i = 0
-    clearInterval(noticeIntervalRef.current!)
-    noticeIntervalRef.current = setInterval(() => {
-      i++
-      setNoticeText(target.slice(0, i))
-      if (i >= target.length) clearInterval(noticeIntervalRef.current!)
-    }, 22)
+    setNoticeText(target ?? '')
   }, [currentStep])
-
-  const activeNoticeFullText = STEP_NOTICE_TEXT[currentStep] ?? ''
 
   // Single-class step (0) dialogue — copied from GraphSection68's own
   // trigger pattern: mobile uses an IntersectionObserver (this section is
@@ -690,7 +663,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
           // proximity purely to wherever the real data happens to place
           // them. Modest strength so real connections still dominate the
           // overall layout; this just biases the pair specifically,
-          // matching the "affluency gaps taking form" story beat.
+          // matching the "affluence gaps taking form" story beat.
           .force('protagonistProximity', d3.forceLink<Node, Edge>([
             { source: PROTAGONIST_HIGH, target: protagonistLow, weight: 1 },
           ]).id(d => d.id).distance(110).strength(0.5))
@@ -936,10 +909,9 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
           {!isMobile && noticeText && (
             <AnimatePresence mode="wait">
               <motion.p key={currentStep}
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}
+                initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.6, ease: 'easeOut' }}
                 style={{ position: 'absolute', top: '6rem', left: '3rem', right: '2rem', zIndex: 1, fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
                 {noticeText}
-                {noticeText.length < activeNoticeFullText.length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
               </motion.p>
             </AnimatePresence>
           )}
@@ -1165,7 +1137,6 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
             <div style={{ position: 'absolute', top: '2.2rem', left: '16%', right: '16%', zIndex: 5, padding: '0.6rem 1rem', backgroundColor: 'rgba(250,249,246,0.92)', borderRadius: '8px' }}>
               <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.6rem, 2.5vw, 0.75rem)', color: '#111', lineHeight: 1.5, margin: 0, textAlign: 'center' }}>
                 {noticeText}
-                {noticeText.length < activeNoticeFullText.length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
               </p>
             </div>
           )}

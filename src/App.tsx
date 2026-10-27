@@ -47,6 +47,21 @@ function App() {
   // wrapper deliberately overlaps the preceding intro text so its nodes
   // are visible early), which meant its bounding box was "intersecting"
   // well before showPanel ever actually turned true.
+  // Disable the browser's own scroll-restoration and force a scroll to
+  // the top on every fresh load/reload — without this, a reload could
+  // leave the actual scroll position wherever it was before refresh,
+  // while React state (including ArticleSection.tsx's own screen value)
+  // always resets to its initial value on a fresh mount. That mismatch
+  // between what's scrolled into view and what the app's click-based
+  // navigation thinks is active is exactly what reads as "reload doesn't
+  // reset to the beginning."
+  useEffect(() => {
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual'
+    }
+    window.scrollTo(0, 0)
+  }, [])
+
   const [isInGraphSection, setIsInGraphSection] = useState(false)
   useEffect(() => {
     const activeSections = new Set<string>()

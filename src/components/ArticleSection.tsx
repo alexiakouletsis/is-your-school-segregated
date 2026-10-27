@@ -257,30 +257,46 @@ export default function ArticleSection({
   const [section01BackHovered, setSection01BackHovered] = useState(false)
   const [section01ForwardHovered, setSection01ForwardHovered] = useState(false)
 
+  // Section01 has two text sub-steps now, rather than "Where does this
+  // data come from?" being its own separate screen — per feedback, the
+  // SVGs and the screen itself should stay completely static the whole
+  // time, with just the title/body text sliding horizontally to swap
+  // between the two. 0 = "Section 01: Elementary School", 1 = "Where
+  // does this data come from?". No direction-tracking ref needed (unlike
+  // the multi-neighbor swipes elsewhere in this file) since there are
+  // only ever these two states and no third neighbor to disambiguate —
+  // each part's own transform is fully determined by section01SubStep
+  // alone, in both directions.
+  const [section01SubStep, setSection01SubStep] = useState<0 | 1>(0)
+  useEffect(() => {
+    if (!curtainDone) setSection01SubStep(0)
+  }, [curtainDone])
+
   const section01GoBack = () => {
+    if (section01SubStep === 1) { setSection01SubStep(0); return }
     onGoToLanding?.()
     setScreen('section01')
   }
   const section01GoForward = () => {
+    if (section01SubStep === 0) { setSection01SubStep(1); return }
     onNavigate?.('graph-elementary')
     const el = document.getElementById('graph-elementary')
-    if (!el) return
-    // Instant (not smooth) now, on both platforms — this jump happens
-    // hidden behind the still-covering Section01 overlay, which is what
-    // actually animates (sliding away) to reveal it; the page's own
-    // scroll position doesn't need to visibly animate anymore. Mobile
-    // still gets its own +76px overshoot on top (accidentally dropped
-    // when this function was rewritten for the slide-overlay approach —
-    // that value was tuned/confirmed correct earlier this same session
-    // and is unrelated to smooth vs instant scrolling).
-    const target = window.scrollY + el.getBoundingClientRect().top + (isMobile ? 66 : 0)
-    window.scrollTo({ top: target, behavior: 'auto' })
+    if (el) {
+      // Instant (not smooth) now, on both platforms — this jump happens
+      // hidden behind the still-covering Section01 overlay, which is
+      // what actually animates (sliding away) to reveal it; the page's
+      // own scroll position doesn't need to visibly animate anymore.
+      // Mobile still gets its own +66px overshoot on top
+      // (tuned/confirmed correct earlier this same session, unrelated to
+      // smooth vs instant scrolling).
+      const target = window.scrollY + el.getBoundingClientRect().top + (isMobile ? 66 : 0)
+      window.scrollTo({ top: target, behavior: 'auto' })
+    }
     // Directly triggers GraphSectionElementary's dialogue on both
-    // platforms now — an instant jump (rather than the smooth scroll
-    // this used to be) can't be relied on to naturally satisfy either
-    // platform's own scroll-position-based entry detection, so this
-    // bypasses that inference entirely: this button knows for certain
-    // the user is intentionally entering this section.
+    // platforms — an instant jump can't be relied on to naturally
+    // satisfy either platform's own scroll-position-based entry
+    // detection, so this bypasses that inference entirely: this button
+    // knows for certain the user is intentionally entering this section.
     window.dispatchEvent(new CustomEvent('triggerElementaryDialogue'))
     setScreen('elementary')
   }
@@ -298,15 +314,20 @@ export default function ArticleSection({
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isMobile, screen, curtainDone])
+  }, [isMobile, screen, curtainDone, section01SubStep])
 
   // GraphSectionElementary's own step-0 "go back" (button, tap, or arrow
   // key) dispatches this instead of scrollIntoView-ing to section01
   // directly — that stopped making sense once Section01 became
   // position:fixed (a fixed element has no meaningful scroll position to
   // scroll TO). This just slides the overlay back in instead.
+  //
+  // Lands on sub-step 1 (the data-source text) within Section01, not
+  // sub-step 0 — going back from Elementary should land where the user
+  // last was before going forward into it, not skip past the data-source
+  // text back to the very beginning.
   useEffect(() => {
-    const handler = () => setScreen('section01')
+    const handler = () => { setSection01SubStep(1); setScreen('section01') }
     window.addEventListener('exitElementaryToSection01', handler)
     return () => window.removeEventListener('exitElementaryToSection01', handler)
   }, [])
@@ -773,46 +794,111 @@ export default function ArticleSection({
             MOBILE_VERTICAL_NUDGE below is the one knob to adjust —
             negative moves the group up, positive moves it down. */}
         <div style={{ transform: isMobile ? `translateY(${MOBILE_VERTICAL_NUDGE})` : undefined }}>
+        {/* Two horizontally-sliding text parts sharing the same space —
+            part 0 is "Section 01: Elementary School", part 1 is "Where
+            does this data come from?" (added per feedback from Alvin
+            Chang). Part 0 stays in normal document flow (no
+            position:absolute/inset:0) so it determines this container's
+            own height naturally, exactly as the original single-text
+            layout did — transforms are purely visual and don't affect
+            layout, so sliding it off-screen doesn't change the space it
+            reserves. Part 1 is absolutely positioned, simply matching
+            whatever height part 0 establishes rather than guessing a
+            fixed height upfront. No direction-tracking ref needed (unlike
+            the multi-neighbor swipes elsewhere in this file) since there
+            are only these two states and no third neighbor to
+            disambiguate — each part's own transform is fully determined
+            by section01SubStep alone, in both directions. */}
         <div style={{
-          padding: '0 1.5rem',
-          maxWidth: isMobile ? '100%' : '940px',
-          margin: isMobile ? '0.5rem auto 0 auto' : '0 auto 0 auto',
-          textAlign: 'center',
-          minHeight: isMobile ? '9.5em' : undefined,
+          position: 'relative', width: '100%', overflow: 'hidden',
         }}>
-          {/* Title — same styling convention as Section01Part2's own
-              title (before that file was taken out of the flow), just
-              living here now instead. Margin-bottom matches Section02's
-              own title-to-body gap (2.5rem), per feedback to keep this
-              section's spacing consistent with that one. */}
-          <h2 style={{
-            fontFamily: "'Gaegu', cursive",
-            fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.8rem)' : 'clamp(2rem, 5vw, 4rem)',
-            color: '#111', fontWeight: 400, textAlign: 'center', margin: '0 0 2.5rem 0',
+          <div style={{
+            backgroundColor: 'var(--color-bg, #faf9f6)',
+            transform: `translateX(${section01SubStep === 0 ? '0%' : '-100%'})`,
+            transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
           }}>
-            Section 01: Elementary School
-          </h2>
-          {/* Font size and maxWidth now match Section02's own body
-              paragraph exactly, per feedback. */}
-          <p style={{
-            fontFamily: "'Kiwi Maru', serif",
-            fontSize: isMobile ? 'clamp(0.9rem, 3.5vw, 1.1rem)' : 'clamp(1.05rem, 1.9vw, 1.35rem)',
-            color: '#111', lineHeight: 1.9, maxWidth: '940px', margin: '0 auto',
+            <div style={{
+              padding: '0 1.5rem',
+              maxWidth: isMobile ? '100%' : '940px',
+              margin: isMobile ? '0.5rem auto 0 auto' : '0 auto 0 auto',
+              textAlign: 'center',
+            }}>
+              {/* Title — same styling convention as Section01Part2's own
+                  title (before that file was taken out of the flow), just
+                  living here now instead. Margin-bottom matches Section02's
+                  own title-to-body gap (2.5rem), per feedback to keep this
+                  section's spacing consistent with that one. */}
+              <h2 style={{
+                fontFamily: "'Gaegu', cursive",
+                fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.8rem)' : 'clamp(2rem, 5vw, 4rem)',
+                color: '#111', fontWeight: 400, textAlign: 'center', margin: '0 0 2.5rem 0',
+              }}>
+                Section 01: Elementary School
+              </h2>
+              {/* Font size and maxWidth now match Section02's own body
+                  paragraph exactly, per feedback. */}
+              <p style={{
+                fontFamily: "'Kiwi Maru', serif",
+                fontSize: isMobile ? 'clamp(0.9rem, 3.5vw, 1.1rem)' : 'clamp(1.05rem, 1.9vw, 1.35rem)',
+                color: '#111', lineHeight: 1.9, maxWidth: '940px', margin: '0 auto',
+              }}>
+                {mode === 'ses' ? (
+                  <>
+                    Take these two students entering kindergarten. One of them comes from a{' '}
+                    <span style={{ color: 'var(--color-high-ses)' }}>higher-socioeconomic status (SES)</span> family, and the other from a{' '}
+                    <span style={{ color: 'var(--color-low-ses)' }}>lower-SES</span> family. Right now, they're just two little kindergarteners about to enter the world. Let's observe how societal systems influence their classes and shape their interactions throughout their lives, starting with <strong>elementary school</strong>.
+                  </>
+                ) : (
+                  <>
+                    Take these two students entering kindergarten. One of them is a{' '}
+                    <span style={{ color: 'var(--color-race-1)' }}>white/asian student</span>, and the other is a{' '}
+                    <span style={{ color: 'var(--color-race-2)' }}>student of color</span>. Right now, they're just two little kindergarteners about to enter the world. Let's observe how societal systems influence their classes and shape their interactions throughout their lives, starting with <strong>elementary school</strong>.
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div style={{
+            position: 'absolute', inset: 0,
+            backgroundColor: 'var(--color-bg, #faf9f6)',
+            transform: `translateX(${section01SubStep === 1 ? '0%' : '100%'})`,
+            transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
           }}>
-            {mode === 'ses' ? (
-              <>
-                Take these two students entering kindergarten. One of them comes from a{' '}
-                <span style={{ color: 'var(--color-high-ses)' }}>higher-socioeconomic status (SES)</span> family, and the other from a{' '}
-                <span style={{ color: 'var(--color-low-ses)' }}>lower-SES</span> family. Right now, they're just two little kindergarteners about to enter the world. Let's observe how societal systems influence their classes and shape their interactions throughout their lives, starting with <strong>elementary school</strong>.
-              </>
-            ) : (
-              <>
-                Take these two students entering kindergarten. One of them is a{' '}
-                <span style={{ color: 'var(--color-race-1)' }}>white/asian student</span>, and the other is a{' '}
-                <span style={{ color: 'var(--color-race-2)' }}>student of color</span>. Right now, they're just two little kindergarteners about to enter the world. Let's observe how societal systems influence their classes and shape their interactions throughout their lives, starting with <strong>elementary school</strong>.
-              </>
-            )}
-          </p>
+            <div style={{
+              padding: '0 1.5rem',
+              maxWidth: isMobile ? '100%' : '1200px',
+              margin: isMobile ? '0.5rem auto 0 auto' : '0 auto 0 auto',
+              textAlign: 'center',
+            }}>
+              <h2 style={{
+                fontFamily: "'Gaegu', cursive",
+                fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.8rem)' : 'clamp(2rem, 5vw, 4rem)',
+                color: '#111', fontWeight: 400, textAlign: 'center', margin: '0 0 2.5rem 0',
+                whiteSpace: isMobile ? undefined : 'nowrap',
+              }}>
+                Where does this data come from?
+              </h2>
+              <p style={{
+                fontFamily: "'Kiwi Maru', serif",
+                fontSize: isMobile ? 'clamp(0.9rem, 3.5vw, 1.1rem)' : 'clamp(1.05rem, 1.9vw, 1.35rem)',
+                color: '#111', lineHeight: 1.9, maxWidth: '940px', margin: '0 auto',
+              }}>
+                Every graph on this site is built from course enrollment records for more than 50,000 students in a southeastern U.S. school district, shared through a partnership with the{' '}
+                <a
+                  href="https://www.pluralconnections.org/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pcg-link"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ color: '#9E2591', textDecoration: 'none' }}
+                >
+                  Plural Connections Group
+                </a>
+                . The course networks zoom in on specific schools that show patterns common across the district. Other numbers reflect averages across all of the district's schools.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* The two protagonist face SVGs, static below the paragraph —

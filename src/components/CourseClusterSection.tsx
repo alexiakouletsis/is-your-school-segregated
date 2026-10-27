@@ -300,7 +300,7 @@ export default function CourseClusterSection({ mode, isActiveScreen, passedForwa
               </div>
 
               <div style={{
-                flex: 1,
+                flex: isMobile ? 'none' : 1,
                 width: '100%',
                 height: isMobile ? '11px' : '12px',
                 borderRadius: '999px',

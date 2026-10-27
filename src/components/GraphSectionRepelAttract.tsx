@@ -171,7 +171,6 @@ export default function GraphSectionRepelAttract({ mode, isActive, hasPassed, ov
   // per feedback, typing was specifically the wrong treatment here.
   const [noticeText, setNoticeText] = useState('')
   const noticeDoneRef = useRef(false)
-  const noticeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const hasRepelledRef = useRef(false)
   const hasAttractedRef = useRef(false)
@@ -186,7 +185,6 @@ export default function GraphSectionRepelAttract({ mode, isActive, hasPassed, ov
     setPhase(prev => {
       if (prev === 'attract') {
         noticeDoneRef.current = false
-        clearInterval(noticeIntervalRef.current!)
         setNoticeText('')
       }
       return 'repel'
@@ -202,14 +200,7 @@ export default function GraphSectionRepelAttract({ mode, isActive, hasPassed, ov
     animate(edgeOpacity, 0.9, { duration: 0.8, delay: 0.5 })
     if (!noticeDoneRef.current) {
       noticeDoneRef.current = true
-      setNoticeText('')
-      let i = 0
-      clearInterval(noticeIntervalRef.current!)
-      noticeIntervalRef.current = setInterval(() => {
-        i++
-        setNoticeText(EDGE_NOTICE.slice(0, i))
-        if (i >= EDGE_NOTICE.length) clearInterval(noticeIntervalRef.current!)
-      }, 22)
+      setNoticeText(EDGE_NOTICE)
     }
     setPhase('attract')
   }
@@ -245,18 +236,14 @@ export default function GraphSectionRepelAttract({ mode, isActive, hasPassed, ov
       // positions here — per feedback, navigating away and back should
       // restore exactly where the user left off (e.g. still on the
       // attract phase), not always reset back to a fresh repel state.
-      // The notice-text cleanup below is purely cosmetic (just clears
-      // whatever text happened to be mid-typing) and safe to keep.
+      // The notice-text cleanup below is purely cosmetic and safe to keep.
       noticeDoneRef.current = false
-      clearInterval(noticeIntervalRef.current!)
       setNoticeText('')
     }
     return () => {
       if (autoRepelTimerRef.current) clearTimeout(autoRepelTimerRef.current)
     }
   }, [isActive])
-
-  useEffect(() => () => clearInterval(noticeIntervalRef.current!), [])
 
   // Reads the shared overlaySlideProgress prop directly (animated from
   // ArticleSection.tsx, shared with GraphExplainerIntro) rather than
@@ -323,10 +310,14 @@ export default function GraphSectionRepelAttract({ mode, isActive, hasPassed, ov
           {isActive && (
             <>
               {!isMobile && noticeText && (
-                <p style={{ position: 'absolute', top: '6rem', left: '3rem', right: '2rem', zIndex: 1, fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
-                  {noticeText}
-                  {noticeText.length < EDGE_NOTICE.length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
-                </p>
+                <AnimatePresence mode="wait">
+                  <motion.p key={noticeText}
+                    initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.6, ease: 'easeOut' }}
+                    style={{ position: 'absolute', top: '6rem', left: '3rem', right: '2rem', zIndex: 1, fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                    {noticeText}
+                  </motion.p>
+                </AnimatePresence>
               )}
               <div style={{
                 position: 'relative', zIndex: 1,
@@ -488,10 +479,14 @@ export default function GraphSectionRepelAttract({ mode, isActive, hasPassed, ov
 
           {isMobile && isActive && noticeText && (
             <div style={{ position: 'absolute', top: '2.2rem', left: '16%', right: '16%', zIndex: 5, padding: '0.6rem 1rem', backgroundColor: 'rgba(250,249,246,0.92)', borderRadius: '8px' }}>
-              <p style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.6rem, 2.5vw, 0.75rem)', color: '#111', lineHeight: 1.5, margin: 0, textAlign: 'center' }}>
-                {noticeText}
-                {noticeText.length < EDGE_NOTICE.length && <span style={{ borderRight: '2px solid #111', marginLeft: '1px' }} />}
-              </p>
+              <AnimatePresence mode="wait">
+                <motion.p key={noticeText}
+                  initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
+                  transition={{ duration: 0.6, ease: 'easeOut' }}
+                  style={{ fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(0.6rem, 2.5vw, 0.75rem)', color: '#111', lineHeight: 1.5, margin: 0, textAlign: 'center' }}>
+                  {noticeText}
+                </motion.p>
+              </AnimatePresence>
             </div>
           )}
 
