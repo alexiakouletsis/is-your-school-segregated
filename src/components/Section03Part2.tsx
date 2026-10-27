@@ -199,8 +199,8 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverla
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          padding: isMobile ? '5.2rem 1.5rem 8.5rem 1.5rem' : '7rem 2rem 9rem 2rem',
-          gap: isMobile ? '1.3rem' : '2.7rem',
+          padding: isMobile ? '5.2rem 1.5rem 8.5rem 1.5rem' : 'min(7rem, 17vh) 2rem min(9rem, 21vh) 2rem',
+          gap: isMobile ? '1.3rem' : 'min(2.7rem, 6.5vh)',
         }}
       >
       <p style={{

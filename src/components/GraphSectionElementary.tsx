@@ -902,7 +902,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
             positioned to match GraphSectionRepelAttract's own convention
             (absolute, relative to this outer panel directly, not an
             inner wrapper) so grades 4-5's layout doesn't overlap. */}
-        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'center', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '3rem 2rem 3rem 3rem', flexShrink: 0, gap: '1.5rem', zIndex: 1 }}>
+        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'center', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '3rem 2rem 3rem 3rem', flexShrink: 0, gap: '1.5rem', zIndex: 1, overflowY: isMobile ? undefined : 'auto' }}>
           {!isMobile && (
             <div style={{ position: 'absolute', top: '3%', bottom: '3%', left: '1rem', right: '1rem', backgroundColor: 'rgba(250, 249, 246, 0.82)', borderRadius: '32px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', zIndex: 0 }} />
           )}
@@ -910,7 +910,7 @@ export default function GraphSectionElementary({ mode, onGrade3Complete, resetSi
             <AnimatePresence mode="wait">
               <motion.p key={currentStep}
                 initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.6, ease: 'easeOut' }}
-                style={{ position: 'absolute', top: '6rem', left: '3rem', right: '2rem', zIndex: 1, fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                style={{ position: 'absolute', top: 'min(6rem, 14vh)', left: '3rem', right: '2rem', zIndex: 1, fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
                 {noticeText}
               </motion.p>
             </AnimatePresence>

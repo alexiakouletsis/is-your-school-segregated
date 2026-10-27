@@ -318,7 +318,7 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'flex-start',
-          padding: isMobile ? '6.3rem 1.5rem 1.5rem 1.5rem' : '5.4rem 2rem 2rem 2rem',
+          padding: isMobile ? '6.3rem 1.5rem 1.5rem 1.5rem' : 'min(5.4rem, 13vh) 2rem 2rem 2rem',
           overflow: 'hidden',
           opacity: contentOpacity,
           zIndex: 10,

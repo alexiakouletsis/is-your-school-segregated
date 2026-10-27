@@ -948,8 +948,8 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             alignItems: 'center',
             justifyContent: 'flex-start',
             overflowY: isMobile ? 'visible' : 'auto',
-            padding: isMobile ? '7.5rem 1.5rem 2.2rem 1.5rem' : '7.5rem 3rem 6.5rem 3rem',
-            gap: isMobile ? '2.2rem' : '3.2rem',
+            padding: isMobile ? '7.5rem 1.5rem 2.2rem 1.5rem' : 'min(7.5rem, 18vh) 3rem min(6.5rem, 15.5vh) 3rem',
+            gap: isMobile ? '2.2rem' : 'min(3.2rem, 7.5vh)',
             transform: `translateX(${conclusionPart === 0 ? '0%' : '-100%'})`,
             transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
           }}
@@ -1055,7 +1055,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             alignItems: 'center',
             justifyContent: 'flex-start',
             overflowY: isMobile ? 'visible' : 'auto',
-            padding: isMobile ? '3.8rem 1.5rem 2.2rem 1.5rem' : '5.3rem 3rem 6.5rem 3rem',
+            padding: isMobile ? '3.8rem 1.5rem 2.2rem 1.5rem' : 'min(5.3rem, 13vh) 3rem min(6.5rem, 15.5vh) 3rem',
             transform: `translateX(${conclusionPart === 1 ? '0%' : '100%'})`,
             transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
           }}
@@ -1064,8 +1064,8 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             ref={bodyRef}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
-              width: '100%', gap: isMobile ? '2.2rem' : '3.2rem',
-              marginTop: isMobile ? '2.6rem' : '4.2rem',
+              width: '100%', gap: isMobile ? '2.2rem' : 'min(3.2rem, 7.5vh)',
+              marginTop: isMobile ? '2.6rem' : 'min(4.2rem, 10vh)',
             }}
           >
           <div style={{

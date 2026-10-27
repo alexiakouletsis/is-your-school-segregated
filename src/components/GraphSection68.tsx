@@ -981,7 +981,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
         <div style={{ height: isMobile ? '94vh' : '100%', width: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', position: 'relative' }}>
 
         {/* left panel */}
-        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: isMobile ? 'center' : 'flex-start', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative' }}>
+        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: isMobile ? 'center' : 'flex-start', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative', overflowY: isMobile ? undefined : 'auto' }}>
           {/* Semi-opaque rounded panel behind the left column's content —
               same convention as GraphSectionElementary/GraphSectionRepel-
               Attract. Didn't exist here before this pass. */}
@@ -1005,7 +1005,7 @@ export default function GraphSection68({ mode, resetSignal, onRaceIntroReached, 
                   height keeps the title's position identical on every
                   step regardless of how long any given step's sentence
                   runs. */}
-              <div style={{ height: '11.5rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
+              <div style={{ height: 'min(11.5rem, 27vh)', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
                 {(currentStep === 2 ? noticeText : altTypedText || altTypingDone) && (
                   <AnimatePresence mode="wait">
                     <motion.p key={currentStep === 2 ? 'step2' : 'altgroup'}

@@ -1392,7 +1392,7 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen, pas
         <div style={{ height: isMobile ? '94vh' : '100%', width: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', position: 'relative' }}>
 
         {/* left panel */}
-        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'flex-start', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative' }}>
+        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'flex-start', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '6rem 2rem 6rem 3rem', flexShrink: 0, gap: isMobile ? '1.5rem' : 0, position: 'relative', overflowY: isMobile ? undefined : 'auto' }}>
           {/* Semi-opaque rounded panel behind the left column's content —
               same convention as GraphSection68/GraphSectionElementary. */}
           {!isMobile && (
@@ -1420,7 +1420,7 @@ export default function GraphSection912({ mode, resetSignal, isActiveScreen, pas
                   to comfortably fit step 2's sentence, the longest one,
                   which is also why that sentence's font is smaller below)
                   keeps the title's position identical on every step. */}
-              <div style={{ height: '11.5rem', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
+              <div style={{ height: 'min(11.5rem, 27vh)', display: 'flex', alignItems: 'flex-start', overflow: 'visible' }}>
                 {noticeText && (
                   <AnimatePresence mode="wait">
                     <motion.p key={currentStep}

@@ -298,7 +298,7 @@ export default function GraphSectionRepelAttract({ mode, isActive, hasPassed, ov
             only the wallpaper above extends into that extra space. */}
         <div style={{ height: isMobile ? '94vh' : '100%', width: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', position: 'relative', transform: isMobile ? 'translateY(-2.5rem)' : undefined }}>
 
-        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'center', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '3rem 2rem 3rem 3rem', flexShrink: 0, gap: '1.5rem' }}>
+        <div style={{ width: isMobile ? '100%' : '28%', height: isMobile ? 'auto' : '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'center', padding: isMobile ? '4.5rem 1.5rem 0.5rem 1.5rem' : '3rem 2rem 3rem 3rem', flexShrink: 0, gap: '1.5rem', overflowY: isMobile ? undefined : 'auto' }}>
           {/* Desktop: the panel background is now a full block spanning
               the whole left column (inset from top/bottom/sides), not
               just wrapped around the current text — so the look stays
@@ -314,7 +314,7 @@ export default function GraphSectionRepelAttract({ mode, isActive, hasPassed, ov
                   <motion.p key={noticeText}
                     initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
                     transition={{ duration: 0.6, ease: 'easeOut' }}
-                    style={{ position: 'absolute', top: '6rem', left: '3rem', right: '2rem', zIndex: 1, fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
+                    style={{ position: 'absolute', top: 'min(6rem, 14vh)', left: '3rem', right: '2rem', zIndex: 1, fontFamily: "'Kiwi Maru', serif", fontSize: 'clamp(1.1rem, 2vw, 1.6rem)', color: '#111', lineHeight: 1.6, margin: 0 }}>
                     {noticeText}
                   </motion.p>
                 </AnimatePresence>
