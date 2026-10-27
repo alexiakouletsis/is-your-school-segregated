@@ -948,8 +948,8 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             alignItems: 'center',
             justifyContent: 'flex-start',
             overflowY: isMobile ? 'visible' : 'auto',
-            padding: isMobile ? '7.5rem 1.5rem 2.2rem 1.5rem' : 'min(7.5rem, 18vh) 3rem min(6.5rem, 15.5vh) 3rem',
-            gap: isMobile ? '2.2rem' : 'min(3.2rem, 7.5vh)',
+            padding: isMobile ? '7.5rem 1.5rem 2.2rem 1.5rem' : 'min(7.5rem, 12.4vh) 3rem min(6.5rem, 10.7vh) 3rem',
+            gap: isMobile ? '2.2rem' : 'min(3.2rem, 5.3vh)',
             transform: `translateX(${conclusionPart === 0 ? '0%' : '-100%'})`,
             transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
           }}
@@ -973,11 +973,11 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             justifyContent: 'center',
             gap: isMobile ? '4rem' : '10.5rem',
             width: '100%',
-            marginTop: isMobile ? '3.2rem' : '2.8rem',
+            marginTop: isMobile ? '3.2rem' : 'min(2.8rem, 4.6vh)',
             flexShrink: 0,
           }}>
             <div style={{ position: 'relative', width: isMobile ? '170px' : '270px' }}>
-              <div style={{ position: 'relative', height: isMobile ? '16rem' : '14rem' }}>
+              <div style={{ position: 'relative', height: isMobile ? '16rem' : 'min(14rem, 23vh)' }}>
                 {dialogueVisible[0] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -1011,7 +1011,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
               />
             </div>
             <div style={{ position: 'relative', width: isMobile ? '170px' : '270px' }}>
-              <div style={{ position: 'relative', height: isMobile ? '16rem' : '14rem' }}>
+              <div style={{ position: 'relative', height: isMobile ? '16rem' : 'min(14rem, 23vh)' }}>
                 {dialogueVisible[1] && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
@@ -1055,7 +1055,7 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             alignItems: 'center',
             justifyContent: 'flex-start',
             overflowY: isMobile ? 'visible' : 'auto',
-            padding: isMobile ? '3.8rem 1.5rem 2.2rem 1.5rem' : 'min(5.3rem, 13vh) 3rem min(6.5rem, 15.5vh) 3rem',
+            padding: isMobile ? '3.8rem 1.5rem 2.2rem 1.5rem' : 'min(5.3rem, 8.7vh) 3rem min(6.5rem, 10.7vh) 3rem',
             transform: `translateX(${conclusionPart === 1 ? '0%' : '100%'})`,
             transition: 'transform 0.5s cubic-bezier(0.65, 0, 0.35, 1)',
           }}
@@ -1064,13 +1064,13 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             ref={bodyRef}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
-              width: '100%', gap: isMobile ? '2.2rem' : 'min(3.2rem, 7.5vh)',
-              marginTop: isMobile ? '2.6rem' : 'min(4.2rem, 10vh)',
+              width: '100%', gap: isMobile ? '2.2rem' : 'min(3.2rem, 5.3vh)',
+              marginTop: isMobile ? '2.6rem' : 'min(4.2rem, 6.9vh)',
             }}
           >
           <div style={{
             position: 'relative', width: '100%', maxWidth: '950px', flexShrink: 0,
-            marginBottom: isMobile ? 0 : '1.4rem',
+            marginBottom: isMobile ? 0 : 'min(1.4rem, 2.3vh)',
             marginTop: isMobile ? 0 : '-0.35rem',
           }}>
             <p style={{
@@ -1148,17 +1148,17 @@ export default function Conclusion({ mode, onToggleModeAndScrollTop: _onToggleMo
             maxWidth: isMobile ? undefined : '1650px',
             padding: isMobile ? 0 : '0',
             flexShrink: 0,
-            marginTop: isMobile ? '-0.6rem' : '1.5rem',
+            marginTop: isMobile ? '-0.6rem' : 'min(1.5rem, 2.5vh)',
             position: 'relative',
             zIndex: 1,
           }}>
             <img
               src={mode === 'race' ? '/assets/phases-orange.svg' : '/assets/phases-pink.svg'}
-              style={{ width: isMobile ? '150px' : '330px', height: 'auto', display: 'block' }}
+              style={{ width: isMobile ? '150px' : 'min(330px, 34vh)', height: 'auto', display: 'block' }}
             />
             <img
               src={mode === 'race' ? '/assets/phases-blue.svg' : '/assets/phases-green.svg'}
-              style={{ width: isMobile ? '150px' : '330px', height: 'auto', display: 'block' }}
+              style={{ width: isMobile ? '150px' : 'min(330px, 34vh)', height: 'auto', display: 'block' }}
             />
           </div>
           </div>

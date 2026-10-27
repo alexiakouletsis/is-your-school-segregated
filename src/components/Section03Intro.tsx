@@ -318,7 +318,7 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'flex-start',
-          padding: isMobile ? '6.3rem 1.5rem 1.5rem 1.5rem' : 'min(5.4rem, 13vh) 2rem 2rem 2rem',
+          padding: isMobile ? '6.3rem 1.5rem 1.5rem 1.5rem' : 'min(5.4rem, 10vh) 2rem 2rem 2rem',
           overflow: 'hidden',
           opacity: contentOpacity,
           zIndex: 10,
@@ -345,7 +345,7 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
             width: '100%',
             textAlign: 'center',
             margin: isMobile ? '0 0 0.6rem 0' : '0 0 0.9rem 0',
-            minHeight: isMobile ? '8.5em' : '4.5em',
+            minHeight: isMobile ? '8.5em' : 'min(4.5em, 9vh)',
           }}>
             {PARA1_FULL}
           </p>
@@ -359,7 +359,7 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
             width: '100%',
             textAlign: 'center',
             margin: isMobile ? '0 0 0.6rem 0' : '0 0 0.9rem 0',
-            minHeight: isMobile ? '8.5em' : '4.5em',
+            minHeight: isMobile ? '8.5em' : 'min(4.5em, 9vh)',
           }}>
             {PARA2_FULL}
           </p>
@@ -368,7 +368,7 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: isMobile ? '0.3rem' : '0.5rem',
+            gap: isMobile ? '0.3rem' : 'min(0.5rem, 1vh)',
             width: '100%',
             maxWidth: '860px',
           }}>
@@ -393,14 +393,14 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
               alignItems: 'center',
               justifyContent: 'space-between',
               width: '100%',
-              padding: isMobile ? '0.3rem 0' : '0.6rem 0',
+              padding: isMobile ? '0.3rem 0' : 'min(0.6rem, 1.1vh) 0',
             }}>
               <img
                 key={`dot1-${flip1}`}
                 src={dot1Src}
                 onClick={() => setFlip1(f => f + 1)}
                 style={{
-                  width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 13vw, 160px)',
+                  width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, min(13vw, 18.5vh), 160px)',
                   height: 'auto',
                   animation: 's3-teeter 2.4s ease-in-out infinite, s3-flip 0.6s ease-in-out',
                 }}
@@ -410,7 +410,7 @@ export default function Section03Intro({ mode, skipSignal, isActiveScreen, passe
                 src={dot2Src}
                 onClick={() => setFlip2(f => f + 1)}
                 style={{
-                  width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 13vw, 160px)',
+                  width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, min(13vw, 18.5vh), 160px)',
                   height: 'auto',
                   animation: 's3-teeter 2.4s ease-in-out infinite, s3-flip 0.6s ease-in-out',
                   animationDelay: '0.4s, 0s',

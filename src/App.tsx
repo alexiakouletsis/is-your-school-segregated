@@ -213,7 +213,17 @@ function App() {
   // CourseClusterSection is the one deliberate exception — its own
   // internal scroll (needed to see the full, often-taller-than-viewport
   // bar chart) is preserved by checking whether the event's target sits
-  // within its own #course-cluster subtree.
+  // within its own #course-cluster subtree. This is safe specifically
+  // because that section has no scroll-position-driven animation logic of
+  // its own — nothing there reads actual scroll percentage. Section03Intro/
+  // Section03Part2/Conclusion were tried as the same kind of exception, but
+  // reverted: those sections DO have scroll-linked logic (Conclusion's own
+  // converge/explode sequence and dialogue timing especially), so allowing
+  // free scroll let the user's own scroll gestures drive that logic
+  // directly, out of sequence, bypassing the click-based triggers meant to
+  // control it instead. Short-viewport overflow in those sections needs a
+  // different fix — reducing their actual spacing/sizing to fit, not
+  // reopening scroll on them.
   useEffect(() => {
     if (!typingDone) return
     const preventScroll = (e: Event) => {

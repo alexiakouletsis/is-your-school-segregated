@@ -199,8 +199,8 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverla
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          padding: isMobile ? '5.2rem 1.5rem 8.5rem 1.5rem' : 'min(7rem, 17vh) 2rem min(9rem, 21vh) 2rem',
-          gap: isMobile ? '1.3rem' : 'min(2.7rem, 6.5vh)',
+          padding: isMobile ? '5.2rem 1.5rem 8.5rem 1.5rem' : 'min(7rem, 12.2vh) 2rem min(9rem, 15.7vh) 2rem',
+          gap: isMobile ? '1.3rem' : 'min(2.7rem, 4.7vh)',
         }}
       >
       <p style={{
@@ -261,13 +261,13 @@ export default function Section03Part2({ onAnimDone, onOverlaySettled: _onOverla
           padding: isMobile ? '0.5rem 0' : '1rem 0',
         }}>
           <img src={dot1Src} style={{
-            width: isMobile ? 'clamp(100px, 26vw, 150px)' : 'clamp(130px, 18vw, 220px)',
+            width: isMobile ? 'clamp(100px, 26vw, 150px)' : 'clamp(130px, min(18vw, 24vh), 220px)',
             height: 'auto',
             aspectRatio: '1 / 1',
             animation: 'bob 2s ease-in-out infinite',
           }} />
           <img src={dot2Src} style={{
-            width: isMobile ? 'clamp(100px, 26vw, 150px)' : 'clamp(130px, 18vw, 220px)',
+            width: isMobile ? 'clamp(100px, 26vw, 150px)' : 'clamp(130px, min(18vw, 24vh), 220px)',
             height: 'auto',
             aspectRatio: '1 / 1',
             animation: 'bob 2s ease-in-out infinite',

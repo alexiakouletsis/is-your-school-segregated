@@ -274,7 +274,7 @@ export default function Hero({ curtainDone, onCurtainDropping, setCurtainDone, o
                 <div style={{
                   position: 'absolute',
                   left: '32.5%',
-                  top: '62.3%',
+                  top: 'calc(62.3% + max(0px, min(60px, (850px - 100vh) * 0.5)))',
                   width: '22%',
                   textAlign: 'right',
                   fontFamily: "'Gaegu', cursive",
@@ -295,7 +295,7 @@ export default function Hero({ curtainDone, onCurtainDropping, setCurtainDone, o
                   style={{
                     position: 'absolute',
                     left: '64%',
-                    top: '69%',
+                    top: 'calc(69% + max(0px, min(60px, (850px - 100vh) * 0.5)))',
                     transform: `translate(-50%, -50%) scale(${buttonHovered ? 1.06 : 1})`,
                     transition: 'transform 0.2s ease',
                     width: circleButtonSize,

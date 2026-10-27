@@ -908,7 +908,7 @@ export default function ArticleSection({
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           gap: isMobile ? '3rem' : '6rem',
-          width: '100%', maxWidth: '940px', margin: isMobile ? '3rem auto 0 auto' : '5.5rem auto 0 auto',
+          width: '100%', maxWidth: '940px', margin: isMobile ? '3rem auto 0 auto' : 'min(5.5rem, 13vh) auto 0 auto',
         }}>
           <img src={mode === 'race' ? '/assets/whiteasian-dot-K3.svg' : '/assets/high-SES-dot-K3.svg'} style={{
             width: isMobile ? 'clamp(80px, 22vw, 120px)' : 'clamp(100px, 12vw, 160px)',
